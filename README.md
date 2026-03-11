@@ -20,7 +20,7 @@ Seedance 2.0 Web 是一款面向内容创作者、设计师、营销人员的 AI
 
 ![image-20260214150856225](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20260214150856225.png)
 
-由于Seedance 2.0 太火爆了，本人积分也有限，需要体验可以设置自己的Session ID，体验完成后把Session ID删除
+由于 Seedance 2.0 太火爆了，本人积分也有限，需要体验可以设置自己的 Session ID，体验完成后把 Session ID 删除
 
 ![image-20260214151003775](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20260214151003775.png)
 
@@ -121,7 +121,7 @@ npm run dev:server   # 仅启动 Express 后端 (:3001)
 
    ![获取 sessionid](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/example-0.png)
 
-   设置seesion id
+   设置 seesion id
 
    ![image-20260214135132639](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20260214135132639.png)
 
@@ -139,7 +139,7 @@ npm run dev:server   # 仅启动 Express 后端 (:3001)
 
 7. 生成完成后自动播放，悬停视频右上角可下载
 
-​    ![image-20260214135051255](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20260214135051255.png)
+    ![image-20260214135051255](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/image-20260214135051255.png)
 
 
 
@@ -208,7 +208,7 @@ seedance/
   │                          │  (bdms SDK 自动注入 a_bogus)  │
   │                          │                              │
   │ GET /api/task/:taskId    │  后端轮询生成状态              │
-  │ (前端每3秒轮询)           │ ────────────────────────────>│
+  │ (前端每 3 秒轮询)           │ ────────────────────────────>│
   │ ────────────────────────>│                              │
   │    { status, result }    │  获取高清视频 URL              │
   │ <────────────────────────│ <────────────────────────────│
@@ -250,7 +250,7 @@ seedance/
 
 ```json
 // 处理中
-{ "status": "processing", "elapsed": 45, "progress": "AI正在生成视频，请耐心等待..." }
+{ "status": "processing", "elapsed": 45, "progress": "AI 正在生成视频，请耐心等待..." }
 
 // 完成
 {
@@ -422,7 +422,7 @@ v0.0.2 已修复此问题。该错误是即梦平台的 shark 反爬机制拦截
 
 欢迎加入技术交流群，分享使用心得和创作成果：
 
-![技术交流群](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/%E5%BE%AE%E4%BF%A1%E5%9B%BE%E7%89%87_20260310230630_169_292.jpg)
+![image-20260311105105806](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/image-20260311105105806.png)
 
 ## 作者联系
 
