@@ -6,7 +6,8 @@ import {
   saveApiConfig,
   hasApiKey,
   validateApiKeyFormat,
-  getCurrentApiKey
+  getCurrentApiKey,
+  getAihubmixEndpoint
 } from '../services/localStorageService';
 
 type ApiProvider = 'volcengine' | 'aihubmix';
@@ -15,9 +16,10 @@ export default function ApiKeyPage() {
   const navigate = useNavigate();
   const [volcengineKey, setVolcengineKey] = useState('');
   const [aihubmixKey, setAihubmixKey] = useState('');
+  const [aihubmixEndpoint, setAihubmixEndpoint] = useState('https://api.aihubmix.com');
   const [defaultProvider, setDefaultProvider] = useState<ApiProvider>('volcengine');
   const [showKeys, setShowKeys] = useState({ volcengine: false, aihubmix: false });
-  const [errors, setErrors] = useState<{ volcengine?: string; aihubmix?: string; general?: string }>({});
+  const [errors, setErrors] = useState<{ volcengine?: string; aihubmix?: string; aihubmixEndpoint?: string; general?: string }>({});
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -26,6 +28,7 @@ export default function ApiKeyPage() {
     const config = getApiConfig();
     if (config.volcengineKey) setVolcengineKey(config.volcengineKey);
     if (config.aihubmixKey) setAihubmixKey(config.aihubmixKey);
+    if (config.aihubmixEndpoint) setAihubmixEndpoint(config.aihubmixEndpoint);
     setDefaultProvider(config.defaultProvider);
   }, []);
 
@@ -58,10 +61,18 @@ export default function ApiKeyPage() {
     }
 
     try {
+      // 验证API接入点格式
+      if (aihubmixKey.trim() && !aihubmixEndpoint.trim()) {
+        setErrors({ aihubmixEndpoint: '请输入API接入点' });
+        setLoading(false);
+        return;
+      }
+
       // 保存配置到localStorage
       saveApiConfig({
         volcengineKey: volcengineKey.trim() || null,
         aihubmixKey: aihubmixKey.trim() || null,
+        aihubmixEndpoint: aihubmixEndpoint.trim(),
         defaultProvider
       });
 
@@ -211,6 +222,39 @@ export default function ApiKeyPage() {
                 </p>
               )}
             </div>
+
+            {/* Aihubmix API 接入点 */}
+            {aihubmixKey.trim() && (
+              <div>
+                <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}>
+                  Aihubmix API 接入点
+                </label>
+                <input
+                  type="text"
+                  value={aihubmixEndpoint}
+                  onChange={(e) => setAihubmixEndpoint(e.target.value)}
+                  placeholder="https://api.aihubmix.com"
+                  style={{
+                    width: '100%',
+                    backgroundColor: '#0f111a',
+                    border: '1px solid #374151',
+                    borderRadius: '0.5rem',
+                    padding: '0.75rem 1rem',
+                    color: '#e5e7eb',
+                    fontSize: '1rem'
+                  }}
+                />
+                <p style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#6b7280' }}>
+                  💡 输入Aihubmix API的接入点地址，默认为官方API地址
+                </p>
+                {errors.aihubmixEndpoint && (
+                  <p style={{ marginTop: '0.25rem', color: '#ef4444', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <AlertCircleIcon style={{ width: '1rem', height: '1rem' }} />
+                    {errors.aihubmixEndpoint}
+                  </p>
+                )}
+              </div>
+            )}
 
             {/* 默认供应商选择 */}
             <div>

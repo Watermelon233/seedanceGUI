@@ -10,6 +10,7 @@
 export interface ApiConfig {
   volcengineKey: string | null;
   aihubmixKey: string | null;
+  aihubmixEndpoint: string; // Aihubmix API接入点
   defaultProvider: 'volcengine' | 'aihubmix';
 }
 
@@ -22,7 +23,12 @@ export function getApiConfig(): ApiConfig {
   try {
     const stored = localStorage.getItem(API_CONFIG_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const config = JSON.parse(stored);
+      // 确保aihubmixEndpoint字段存在
+      if (!config.aihubmixEndpoint) {
+        config.aihubmixEndpoint = 'https://api.aihubmix.com';
+      }
+      return config;
     }
   } catch (error) {
     console.error('读取API配置失败:', error);
@@ -31,6 +37,7 @@ export function getApiConfig(): ApiConfig {
   return {
     volcengineKey: null,
     aihubmixKey: null,
+    aihubmixEndpoint: 'https://api.aihubmix.com', // 默认API接入点
     defaultProvider: 'volcengine'
   };
 }
@@ -65,6 +72,23 @@ export function getCurrentApiKey(): string | null {
 export function hasApiKey(): boolean {
   const config = getApiConfig();
   return !!(config.volcengineKey || config.aihubmixKey);
+}
+
+/**
+ * 获取Aihubmix API接入点
+ */
+export function getAihubmixEndpoint(): string {
+  const config = getApiConfig();
+  return config.aihubmixEndpoint || 'https://api.aihubmix.com';
+}
+
+/**
+ * 设置Aihubmix API接入点
+ */
+export function setAihubmixEndpoint(endpoint: string): void {
+  const config = getApiConfig();
+  config.aihubmixEndpoint = endpoint;
+  saveApiConfig(config);
 }
 
 /**
