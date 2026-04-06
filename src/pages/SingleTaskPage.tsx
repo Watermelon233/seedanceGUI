@@ -39,6 +39,7 @@ export default function SingleTaskPage() {
   const [generation, setGeneration] = useState<GenerationState>({
     status: 'idle',
   });
+  const [imageUrl, setImageUrl] = useState(''); // 新增：图片 URL 输入
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
@@ -72,6 +73,29 @@ export default function SingleTaskPage() {
       });
 
       setMediaFiles([...mediaFiles, ...newMediaFiles]);
+    },
+    [mediaFiles, selectedMode]
+  );
+
+  // 添加图片 URL
+  const addImageUrl = useCallback(
+    (url: string) => {
+      const config = getModeConfig(selectedMode);
+      if (mediaFiles.length >= config.maxImages) {
+        alert(`⚠️ 当前模式最多支持${config.maxImages}个媒体文件`);
+        return;
+      }
+
+      const newMediaFile: MediaFile = {
+        id: `media-${++nextId}`,
+        file: undefined,
+        type: MediaType.IMAGE,
+        previewUrl: url, // 直接使用 URL
+        index: mediaFiles.length + 1,
+        url: url, // 存储 URL
+      };
+
+      setMediaFiles([...mediaFiles, newMediaFile]);
     },
     [mediaFiles, selectedMode]
   );
@@ -129,7 +153,8 @@ export default function SingleTaskPage() {
           model,
           ratio,
           duration,
-          files: mediaFiles.map((media) => media.file),
+          files: mediaFiles.filter((m) => m.file).map((media) => media.file),
+          imageUrls: mediaFiles.filter((m) => m.url).map((media) => media.url!),
         },
         (progress) => {
           setGeneration((prev) => ({ ...prev, progress }));
@@ -257,7 +282,7 @@ export default function SingleTaskPage() {
 
                       {/* 序号标记 */}
                       <span className="absolute top-0 left-0 bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl-xl rounded-br-xl font-bold">
-                        {media.type === MediaType.IMAGE ? `图${media.index}` :
+                        {media.type === MediaType.IMAGE ? (media.url ? `🔗 图${media.index}` : `图${media.index}`) :
                          media.type === MediaType.AUDIO ? `音${media.index}` :
                          `视${media.index}`}
                       </span>
@@ -287,6 +312,31 @@ export default function SingleTaskPage() {
             {/* Upload zone - 智能提示 */}
             {getModeConfig(selectedMode).maxImages > 0 ? (
               <>
+                {/* 图片 URL 输入 */}
+                {mediaFiles.length < getModeConfig(selectedMode).maxImages && (
+                  <div className="flex gap-2 mb-3">
+                    <input
+                      type="text"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="粘贴图片 URL (https://...)"
+                      className="flex-1 bg-[#1c1f2e] border border-gray-700 rounded-xl px-3 py-2 text-xs text-gray-200 placeholder-gray-500 focus:outline-none focus:border-purple-500/50"
+                    />
+                    <button
+                      onClick={() => {
+                        if (imageUrl.trim()) {
+                          addImageUrl(imageUrl.trim());
+                          setImageUrl('');
+                        }
+                      }}
+                      disabled={!imageUrl.trim()}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:bg-gray-700 disabled:text-gray-500 text-white text-xs rounded-xl transition-colors"
+                    >
+                      添加 URL
+                    </button>
+                  </div>
+                )}
+
                 {mediaFiles.length < getModeConfig(selectedMode).maxImages && (
                   <div
                     onClick={() => fileInputRef.current?.click()}

@@ -121,7 +121,7 @@ export class AihubmixProvider extends BaseVideoProvider {
       console.log('');
 
       // 5. API调用 - POST到 /v1/videos（使用本地代理避免 CORS）
-      const apiUrl = `http://localhost:3001/api/v1/videos`;
+      const apiUrl = `http://localhost:3002/api/v1/videos`;
 
       console.log('🚀 发起API请求...');
       console.log('URL:', apiUrl);
@@ -198,7 +198,7 @@ export class AihubmixProvider extends BaseVideoProvider {
       this.validateApiKey();
 
       // 2. URL构建 - 使用本地代理
-      const apiUrl = `http://localhost:3001/api/v1/videos/${taskId}`;
+      const apiUrl = `http://localhost:3002/api/v1/videos/${taskId}`;
 
       console.log('');
       console.log('════════════════════════════════════════════════════════════════');

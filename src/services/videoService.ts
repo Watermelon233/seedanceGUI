@@ -43,6 +43,7 @@ export async function generateVideo(
       ratio: request.ratio,
       duration: request.duration,
       imageFiles: request.files,
+      imageUrls: request.imageUrls,
       generateAudio: true,
       resolution: request.model.includes('vip') ? '720p' : '720p',
     });

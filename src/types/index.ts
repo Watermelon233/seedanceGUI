@@ -32,10 +32,11 @@ export enum MediaType {
  */
 export interface MediaFile {
   id: string;
-  file: File;
+  file: File | undefined; // 改为可选，支持 URL 方式
   type: MediaType;
   previewUrl: string;
   index: number;
+  url?: string; // 可选的图片 URL
 }
 
 /**
@@ -313,6 +314,7 @@ export interface GenerateVideoRequest {
   ratio: AspectRatio;
   duration: Duration;
   files: File[];
+  imageUrls?: string[]; // 可选的图片 URL 列表
 }
 
 export interface VideoGenerationResponse {
