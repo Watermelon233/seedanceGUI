@@ -8,7 +8,10 @@ node_modules/
 data/
 *.db
 *.db-*
-server/data/
+*.sqlite
+*.sqlite-*
+server/data/*.db
+server/data/*.sqlite
 
 # 日志
 *.log

@@ -25,10 +25,18 @@ export function initDatabase() {
   // 启用外键约束
   db.pragma('foreign_keys = ON');
 
+  // 确保applied_migrations表存在（用于迁移系统）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS applied_migrations (
+      file TEXT PRIMARY KEY,
+      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   const existingTableCount = db.prepare(`
     SELECT COUNT(*) as count
     FROM sqlite_master
-    WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+    WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != 'applied_migrations'
   `).get().count;
 
   if (existingTableCount === 0) {
@@ -51,6 +59,18 @@ export function initDatabase() {
  * 应用数据库迁移
  */
 function shouldSkipMigration(db, file) {
+  // 检查我们的新迁移是否已经应用
+  const hasNewMigration = db.prepare(`
+    SELECT 1 FROM applied_migrations WHERE file = '20260406_migrate_to_api_providers.sql'
+  `).get();
+
+  if (hasNewMigration) {
+    // 如果新迁移已应用，跳过所有jimeng_session相关的迁移
+    if (file.includes('jimeng_session')) {
+      return true;
+    }
+  }
+
   if (file === '20260325_add_batch_task_persistence.sql') {
     const columns = db.prepare(`PRAGMA table_info(tasks)`).all();
     const columnNames = new Set(columns.map((column) => column.name));
@@ -69,6 +89,16 @@ function shouldSkipMigration(db, file) {
   }
 
   if (file === '20260330_add_jimeng_session_account_activation.sql') {
+    // 检查表是否存在，如果表不存在说明已经被新的API供应商迁移删除
+    const tableExists = db.prepare(`
+      SELECT name FROM sqlite_master WHERE type='table' AND name='jimeng_session_accounts'
+    `).get();
+
+    if (!tableExists) {
+      // 表已被删除，跳过此迁移
+      return true;
+    }
+
     const columns = db.prepare(`PRAGMA table_info(jimeng_session_accounts)`).all();
     const columnNames = new Set(columns.map((column) => column.name));
     return ['is_enabled', 'priority'].every((columnName) => columnNames.has(columnName));

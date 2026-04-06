@@ -4,11 +4,8 @@ import { getDatabase } from '../database/index.js';
 
 /**
  * 用户认证服务
- * 参考 genai-craft 项目实现
+ * 重构版本：使用API Key认证，移除session机制
  */
-
-// Session 有效期：7 天
-const SESSION_EXPIRY_DAYS = 7;
 
 // 邮件传输器缓存
 let cachedMailTransporter = null;
@@ -111,7 +108,6 @@ export async function sendVerificationEmail(email, code) {
  * 生成密码哈希
  */
 export function hashPassword(password) {
-  // 简单实现，生产环境建议使用 bcrypt
   return crypto.createHash('sha256').update(password + 'seedance_salt_2024').digest('hex');
 }
 
@@ -123,10 +119,18 @@ export function verifyPassword(password, hash) {
 }
 
 /**
- * 生成 Session ID
+ * 生成API Key（用于用户认证）
+ * 格式: sk_32位随机字符串
  */
-export function generateSessionId() {
-  return crypto.randomBytes(32).toString('hex');
+export function generateApiKey() {
+  return `sk_${crypto.randomBytes(32).toString('hex')}`;
+}
+
+/**
+ * 验证API Key格式
+ */
+export function validateApiKeyFormat(apiKey) {
+  return typeof apiKey === 'string' && apiKey.startsWith('sk_') && apiKey.length >= 35;
 }
 
 /**
@@ -192,35 +196,27 @@ export async function registerUser(email, password, emailCode) {
   // 创建用户
   const passwordHash = hashPassword(password);
   const result = db.prepare(`
-    INSERT INTO users (email, password_hash, role, status, credits)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(email, passwordHash, 'user', 'active', 10);
-
-  // 创建 session
-  const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-
-  db.prepare(`
-    INSERT INTO sessions (session_id, user_id, expires_at)
-    VALUES (?, ?, ?)
-  `).run(sessionId, Number(result.lastInsertRowid), expiresAt.toISOString());
+    INSERT INTO users (email, password_hash, role, status, credits, api_provider)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(email, passwordHash, 'user', 'active', 10, 'volcengine');
 
   // 获取用户信息
   const user = db.prepare(`
-    SELECT id, email, role, status, credits, created_at
+    SELECT id, email, role, status, credits, created_at, api_provider
     FROM users
     WHERE id = ?
   `).get(result.lastInsertRowid);
 
   return {
-    sessionId,
+    apiKey: null, // 用户需要在设置页面配置API Key
     user: {
       id: user.id,
       email: user.email,
       role: user.role,
       status: user.status,
       credits: user.credits,
-      createdAt: user.created_at
+      createdAt: user.created_at,
+      apiProvider: user.api_provider
     }
   };
 }
@@ -238,7 +234,7 @@ export async function loginUser(email, password) {
 
   // 查找用户
   const user = db.prepare(`
-    SELECT id, email, password_hash, role, status, credits
+    SELECT id, email, password_hash, role, status, credits, api_provider
     FROM users
     WHERE email = ?
   `).get(email);
@@ -256,63 +252,92 @@ export async function loginUser(email, password) {
     throw new Error('密码错误');
   }
 
-  // 删除过期 sessions
-  db.prepare(`DELETE FROM sessions WHERE expires_at < datetime('now')`).run();
-
-  // 创建新 session
-  const sessionId = generateSessionId();
-  const expiresAt = new Date(Date.now() + SESSION_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-
-  db.prepare(`
-    INSERT INTO sessions (session_id, user_id, expires_at)
-    VALUES (?, ?, ?)
-  `).run(sessionId, Number(user.id), expiresAt.toISOString());
-
+  // 不再创建session，直接返回用户信息
   return {
-    sessionId,
+    apiKey: null, // 从数据库获取用户的API Key
     user: {
       id: user.id,
       email: user.email,
       role: user.role,
       status: user.status,
-      credits: user.credits
+      credits: user.credits,
+      apiProvider: user.api_provider
     }
   };
 }
 
 /**
- * 用户登出
+ * 验证API Key并获取用户信息
+ * 这是新的认证方式，替代原来的session认证
  */
-export async function logoutUser(sessionId) {
+export async function verifyApiKey(apiKey) {
   const db = getDatabase();
-  db.prepare(`DELETE FROM sessions WHERE session_id = ?`).run(sessionId);
+
+  if (!validateApiKeyFormat(apiKey)) {
+    return null;
+  }
+
+  // 根据API Key格式判断供应商类型
+  let providerField = null;
+  if (apiKey.startsWith('sk_volcengine_')) {
+    providerField = 'volcengine_api_key';
+  } else if (apiKey.startsWith('sk_aihubmix_')) {
+    providerField = 'aihubmix_api_key';
+  } else {
+    // 通用格式，需要在所有字段中查找
+    const user = db.prepare(`
+      SELECT id, email, role, status, credits, api_provider
+      FROM users
+      WHERE volcengine_api_key = ? OR aihubmix_api_key = ?
+    `).get(apiKey, apiKey);
+
+    if (user) {
+      return {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        credits: user.credits
+      };
+    }
+    return null;
+  }
+
+  // 根据供应商字段查询
+  const user = db.prepare(`
+    SELECT id, email, role, status, credits, api_provider
+    FROM users
+    WHERE ${providerField} = ?
+  `).get(apiKey);
+
+  if (user) {
+    return {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      credits: user.credits,
+      apiProvider: user.api_provider
+    };
+  }
+
+  return null;
+}
+
+/**
+ * 用户登出（简化版本，无需删除session）
+ */
+export async function logoutUser() {
   return { success: true };
 }
 
 /**
- * 获取当前用户信息
+ * 获取当前用户信息（兼容性方法，保留用于其他代码调用）
  */
 export async function getCurrentUser(sessionId) {
-  const db = getDatabase();
-
-  const session = db.prepare(`
-    SELECT s.*, u.id as user_id, u.email, u.role, u.status, u.credits
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.session_id = ? AND s.expires_at > datetime('now')
-  `).get(sessionId);
-
-  if (!session) {
-    return null;
-  }
-
-  return {
-    id: session.user_id,
-    email: session.email,
-    role: session.role,
-    status: session.status,
-    credits: session.credits
-  };
+  // 新版本：忽略sessionId参数，返回null
+  // 前端应该使用verifyApiKey进行认证
+  return null;
 }
 
 /**
@@ -347,8 +372,90 @@ export async function changePassword(userId, oldPassword, newPassword) {
     WHERE id = ?
   `).run(newHash, userId);
 
-  // 删除所有 sessions（强制重新登录）
-  db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
+  return { success: true };
+}
+
+/**
+ * 保存用户的API Key
+ */
+export async function saveUserApiKey(userId, provider, apiKey, keyName = '默认API密钥') {
+  const db = getDatabase();
+
+  if (!['volcengine', 'aihubmix'].includes(provider)) {
+    throw new Error('无效的API供应商');
+  }
+
+  if (!validateApiKeyFormat(apiKey)) {
+    throw new Error('API Key格式无效');
+  }
+
+  const field = `${provider}_api_key`;
+
+  db.prepare(`
+    UPDATE users SET ${field} = ?, api_key_name = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(apiKey, keyName, userId);
+
+  return { success: true };
+}
+
+/**
+ * 获取用户的API Key配置
+ */
+export async function getUserApiKeys(userId) {
+  const db = getDatabase();
+
+  const user = db.prepare(`
+    SELECT api_provider, volcengine_api_key, aihubmix_api_key, api_key_name
+    FROM users
+    WHERE id = ?
+  `).get(userId);
+
+  if (!user) {
+    throw new Error('用户不存在');
+  }
+
+  return {
+    defaultProvider: user.api_provider,
+    volcengine: {
+      hasKey: !!user.volcengine_api_key,
+      keyName: user.volcengine_api_key ? user.api_key_name : null
+    },
+    aihubmix: {
+      hasKey: !!user.aihubmix_api_key,
+      keyName: user.aihubmix_api_key ? user.api_key_name : null
+    }
+  };
+}
+
+/**
+ * 获取用户用于特定供应商的API Key
+ */
+export async function getUserApiKeyForProvider(userId, provider) {
+  const db = getDatabase();
+
+  const field = `${provider}_api_key`;
+  const user = db.prepare(`
+    SELECT ${field} as api_key FROM users WHERE id = ?
+  `).get(userId);
+
+  return user?.api_key || null;
+}
+
+/**
+ * 设置用户的默认API供应商
+ */
+export async function setUserDefaultProvider(userId, provider) {
+  const db = getDatabase();
+
+  if (!['volcengine', 'aihubmix'].includes(provider)) {
+    throw new Error('无效的API供应商');
+  }
+
+  db.prepare(`
+    UPDATE users SET api_provider = ?, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(provider, userId);
 
   return { success: true };
 }
@@ -616,7 +723,7 @@ export async function getUserList(page = 1, pageSize = 20, filters = {}) {
   }
 
   const users = db.prepare(`
-    SELECT id, email, role, status, credits, created_at, last_check_in_at
+    SELECT id, email, role, status, credits, created_at, last_check_in_at, api_provider
     FROM users
     WHERE ${whereClause}
     ORDER BY created_at DESC
@@ -645,7 +752,7 @@ export async function getUserDetail(userId) {
   const db = getDatabase();
 
   const user = db.prepare(`
-    SELECT id, email, role, status, credits, created_at, updated_at, last_check_in_at
+    SELECT id, email, role, status, credits, created_at, updated_at, last_check_in_at, api_provider
     FROM users
     WHERE id = ?
   `).get(userId);
@@ -732,9 +839,6 @@ export async function resetUserPassword(userId, newPassword) {
     UPDATE users SET password_hash = ?, updated_at = datetime('now')
     WHERE id = ?
   `).run(passwordHash, userId);
-
-  // 删除所有 sessions
-  db.prepare(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
 
   return { success: true };
 }

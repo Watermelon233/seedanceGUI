@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import browserService from '../browser-service.js';
 import { getDatabase } from '../database/index.js';
+import { getBestProviderForUser } from './providers/index.js';
+import * as authService from './authService.js';
 
 // 常量定义
 const JIMENG_BASE_URL = 'https://jimeng.jianying.com';
@@ -585,14 +587,176 @@ async function invokePersistenceCallback(callback, label, ...args) {
 }
 
 /**
- * Seedance 2.0 视频生成主函数
+ * 使用新的供应商API生成视频（推荐方式）
+ * @param {Object} options - 生成选项
+ * @param {string} options.prompt - 提示词
+ * @param {string} options.ratio - 画面比例
+ * @param {string} options.model - 模型名称
+ * @param {number} options.duration - 视频时长
+ * @param {Array} options.files - 图片文件数组
+ * @param {string} options.userId - 用户ID（用于获取API Key）
+ * @param {string} options.provider - 供应商名称（可选）
+ * @param {Function} options.onProgress - 进度回调函数
+ * @returns {Promise<{ videoUrl: string, taskId: string, revisedPrompt: string }>}
+ */
+async function generateVideoWithProvider(options) {
+  const {
+    prompt,
+    ratio = '16:9',
+    model = 'seedance-2.0',
+    duration = 5,
+    files = [],
+    userId,
+    provider = null,
+    onProgress
+  } = options;
+
+  if (onProgress) onProgress('正在初始化API供应商...');
+
+  // 获取用户的API Key和首选供应商
+  const db = getDatabase();
+  const user = db.prepare(`
+    SELECT api_provider, volcengine_api_key, aihubmix_api_key
+    FROM users
+    WHERE id = ?
+  `).get(userId);
+
+  if (!user) {
+    throw new Error('用户不存在');
+  }
+
+  // 确定使用的供应商
+  const selectedProvider = provider || user.api_provider || 'volcengine';
+
+  // 获取对应的API Key
+  let apiKey;
+  if (selectedProvider === 'volcengine') {
+    apiKey = user.volcengine_api_key;
+  } else if (selectedProvider === 'aihubmix') {
+    apiKey = user.aihubmix_api_key;
+  } else {
+    throw new Error(`不支持的供应商: ${selectedProvider}`);
+  }
+
+  if (!apiKey) {
+    throw new Error(`请先在设置页面配置${selectedProvider === 'volcengine' ? '火山方舟' : 'Aihubmix'}API Key`);
+  }
+
+  // 获取供应商实例
+  const videoProvider = getBestProviderForUser(selectedProvider);
+
+  if (onProgress) onProgress('正在处理图片素材...');
+
+  // 将文件转换为dataUrl格式（如果需要）
+  const processedFiles = await Promise.all(files.map(async (file) => {
+    // 如果文件已经有dataUrl属性，直接使用
+    if (file.dataUrl) {
+      return { dataUrl: file.dataUrl, url: null };
+    }
+    // 否则从buffer转换为dataUrl
+    if (file.buffer) {
+      const base64 = file.buffer.toString('base64');
+      const mimeType = file.mimetype || 'image/jpeg';
+      return {
+        dataUrl: `data:${mimeType};base64,${base64}`,
+        url: null
+      };
+    }
+    // 如果有url属性，直接使用
+    if (file.url) {
+      return { dataUrl: null, url: file.url };
+    }
+    throw new Error('无效的文件格式');
+  }));
+
+  // 构建请求对象
+  const request = {
+    prompt: prompt || '',
+    model,
+    ratio,
+    duration,
+    files: processedFiles,
+    referenceMode: '全能参考'
+  };
+
+  if (onProgress) onProgress('正在提交视频生成任务...');
+
+  // 转换请求格式并创建任务
+  const transformedRequest = videoProvider.transformRequest(request);
+  const createResult = await videoProvider.createTask(apiKey, transformedRequest);
+
+  if (!createResult.success) {
+    throw new Error(createResult.error || '创建任务失败');
+  }
+
+  const taskId = createResult.taskId;
+  console.log(`[video] 任务创建成功，taskId: ${taskId}`);
+
+  if (onProgress) onProgress('任务已提交，正在生成视频...');
+
+  // 轮询任务状态
+  const maxRetries = 60;
+  const checkInterval = 3000; // 3秒检查一次
+
+  for (let retryCount = 0; retryCount < maxRetries; retryCount++) {
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+
+    const statusResult = await videoProvider.getTaskStatus(apiKey, taskId);
+
+    if (!statusResult.success) {
+      console.warn(`[video] 查询任务状态失败: ${statusResult.error}`);
+      continue;
+    }
+
+    const status = statusResult.status;
+    console.log(`[video] 任务状态: ${status} (${retryCount + 1}/${maxRetries})`);
+
+    // 检查任务是否完成
+    if (status === 'succeeded' || status === 'completed' || status === 'finished') {
+      if (onProgress) onProgress('视频生成完成，正在获取视频地址...');
+
+      // 转换响应格式
+      const response = videoProvider.transformResponse(statusResult);
+      const videoUrl = response.data?.[0]?.url;
+
+      if (!videoUrl) {
+        throw new Error('未能从响应中获取视频URL');
+      }
+
+      console.log(`[video] 视频生成完成: ${videoUrl}`);
+      return {
+        videoUrl,
+        taskId,
+        revisedPrompt: response.data?.[0]?.revised_prompt || prompt || ''
+      };
+    }
+
+    // 检查任务是否失败
+    if (status === 'failed' || status === 'error') {
+      throw new Error('视频生成失败，请检查API Key配额或稍后重试');
+    }
+
+    // 更新进度
+    if (onProgress && retryCount % 5 === 0) {
+      const minutes = Math.floor((retryCount * checkInterval) / 60000);
+      if (onProgress) onProgress(`视频生成中，已等待 ${minutes} 分钟...`);
+    }
+  }
+
+  throw new Error('视频生成超时（约3分钟），请稍后重试');
+}
+
+/**
+ * Seedance 2.0 视频生成主函数（兼容旧版本）
  * @param {Object} options - 生成选项
  * @param {string} options.prompt - 提示词
  * @param {string} options.ratio - 画面比例
  * @param {number} options.duration - 视频时长
  * @param {Array} options.files - 图片文件数组
- * @param {string} options.sessionId - SessionID
+ * @param {string} options.sessionId - SessionID（向后兼容）
  * @param {string} options.model - 模型名称
+ * @param {string} options.userId - 用户ID（新方式，推荐）
+ * @param {string} options.provider - 供应商名称（可选）
  * @param {Function} options.onProgress - 进度回调函数
  * @param {Function} options.onSubmitId - 获得 submitId 时的回调
  * @param {Function} options.onHistoryId - 获得 historyId 时的回调
@@ -608,6 +772,8 @@ async function generateSeedanceVideo(options) {
     files = [],
     sessionId,
     model = 'seedance-2.0',
+    userId,
+    provider,
     onProgress,
     onSubmitId,
     onHistoryId,
@@ -615,6 +781,38 @@ async function generateSeedanceVideo(options) {
     onVideoReady,
   } = options;
 
+  // 检测使用哪种生成方式
+  // 如果提供了userId，使用新的供应商API方式
+  if (userId) {
+    console.log('[video] 使用新的供应商API方式生成视频');
+    try {
+      const result = await generateVideoWithProvider({
+        prompt,
+        ratio,
+        duration,
+        files,
+        model,
+        userId,
+        provider,
+        onProgress
+      });
+
+      // 兼容旧的返回格式
+      return {
+        videoUrl: result.videoUrl,
+        historyId: result.taskId, // 将taskId映射为historyId以保持兼容性
+        itemId: null,
+        submitId: result.taskId,  // 将taskId映射为submitId以保持兼容性
+        revisedPrompt: result.revisedPrompt
+      };
+    } catch (error) {
+      console.error('[video] 供应商API方式失败，尝试回退到session方式:', error.message);
+      // 如果新方式失败，继续尝试旧的session方式（向后兼容）
+    }
+  }
+
+  // 使用旧的session认证方式（向后兼容）
+  console.log('[video] 使用传统的session认证方式生成视频');
   const requestContext = getRequestContext(options);
   const startTime = Date.now();
   const modelKey = model && MODEL_MAP[model] ? model : 'seedance-2.0';
@@ -1002,6 +1200,7 @@ function updateTaskStatus(taskId, status, videoUrl = null, historyId = null) {
 
 export {
   generateSeedanceVideo,
+  generateVideoWithProvider, // 新增：使用供应商API生成视频
   updateTaskStatus,
   MODEL_MAP,
   BENEFIT_TYPE_MAP,

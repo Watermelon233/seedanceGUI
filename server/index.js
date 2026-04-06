@@ -85,23 +85,39 @@ function consumeDownloadToken(token, userId = null) {
 
 setInterval(cleanupExpiredDownloadTokens, DOWNLOAD_TOKEN_TTL_MS).unref();
 
-// 认证中间件
+// 认证中间件（支持API Key和Session ID两种认证方式）
 const authenticate = async (req, res, next) => {
+  const apiKey = req.headers['x-api-key'];
   const sessionId = req.headers['x-session-id'];
 
-  if (!sessionId) {
-    return res.status(401).json({ error: '未登录' });
-  }
-
   try {
-    const user = await authService.getCurrentUser(sessionId);
-    if (!user) {
-      return res.status(401).json({ error: 'Session 已过期或无效' });
+    let user = null;
+
+    // 优先使用API Key认证（新方式）
+    if (apiKey) {
+      user = await authService.verifyApiKey(apiKey);
+      if (!user) {
+        return res.status(401).json({ error: 'API Key 无效或已过期' });
+      }
+      req.apiKey = apiKey;
     }
+    // 兼容旧的Session ID认证方式
+    else if (sessionId) {
+      user = await authService.getCurrentUser(sessionId);
+      if (!user) {
+        return res.status(401).json({ error: 'Session 已过期或无效' });
+      }
+      req.sessionId = sessionId;
+    }
+    // 没有提供任何认证信息
+    else {
+      return res.status(401).json({ error: '未登录，请提供API Key或Session ID' });
+    }
+
     req.user = user;
-    req.sessionId = sessionId; // 保存原始 sessionId 供后续使用
     next();
   } catch (error) {
+    console.error('认证错误:', error);
     res.status(401).json({ error: '认证失败' });
   }
 };
@@ -2197,6 +2213,93 @@ app.post('/api/settings/session-accounts/test', authenticate, async (req, res) =
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// -------------------- API Key 管理 API（新增）--------------------
+// GET /api/settings/api-keys - 获取用户的API Key配置
+app.get('/api/settings/api-keys', authenticate, async (req, res) => {
+  try {
+    const config = await authService.getUserApiKeys(req.user.id);
+    res.json({ success: true, data: config });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/api-keys - 保存或更新API Key
+app.post('/api/settings/api-keys', authenticate, async (req, res) => {
+  try {
+    const { provider, apiKey, keyName = '默认API密钥' } = req.body;
+
+    if (!provider || !apiKey) {
+      return res.status(400).json({ success: false, error: '供应商和API Key不能为空' });
+    }
+
+    if (!['volcengine', 'aihubmix'].includes(provider)) {
+      return res.status(400).json({ success: false, error: '无效的供应商' });
+    }
+
+    await authService.saveUserApiKey(req.user.id, provider, apiKey, keyName);
+    res.json({ success: true, data: { message: 'API Key保存成功' } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// DELETE /api/settings/api-keys/:provider - 删除API Key
+app.delete('/api/settings/api-keys/:provider', authenticate, async (req, res) => {
+  try {
+    const { provider } = req.params;
+
+    if (!['volcengine', 'aihubmix'].includes(provider)) {
+      return res.status(400).json({ success: false, error: '无效的供应商' });
+    }
+
+    // 设置API Key为null来删除
+    await authService.saveUserApiKey(req.user.id, provider, null, null);
+    res.json({ success: true, data: { success: true } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// POST /api/settings/api-keys/test - 测试API Key连接
+app.post('/api/settings/api-keys/test', authenticate, async (req, res) => {
+  try {
+    const { provider, apiKey } = req.body;
+
+    if (!provider || !apiKey) {
+      return res.status(400).json({ success: false, error: '供应商和API Key不能为空' });
+    }
+
+    // 这里需要调用供应商抽象层的testConnection方法
+    // 暂时返回简单验证结果
+    const isValid = authService.validateApiKeyFormat(apiKey);
+
+    res.json({
+      success: isValid,
+      message: isValid ? 'API Key格式验证通过' : 'API Key格式无效',
+      error: isValid ? null : 'API Key格式无效'
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/settings/default-provider - 设置默认API供应商
+app.put('/api/settings/default-provider', authenticate, async (req, res) => {
+  try {
+    const { provider } = req.body;
+
+    if (!provider || !['volcengine', 'aihubmix'].includes(provider)) {
+      return res.status(400).json({ success: false, error: '无效的供应商' });
+    }
+
+    await authService.setUserDefaultProvider(req.user.id, provider);
+    res.json({ success: true, data: { success: true } });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
