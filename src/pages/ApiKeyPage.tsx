@@ -22,11 +22,16 @@ export default function ApiKeyPage() {
   const [errors, setErrors] = useState<{ volcengine?: string; aihubmix?: string; aihubmixEndpoint?: string; general?: string }>({});
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hasDefaultKey, setHasDefaultKey] = useState(false);
 
   // 加载已保存的配置
   useEffect(() => {
     const config = getApiConfig();
-    if (config.volcengineKey) setVolcengineKey(config.volcengineKey);
+    if (config.volcengineKey) {
+      setVolcengineKey(config.volcengineKey);
+      // 检查是否是默认的测试Key
+      setHasDefaultKey(config.volcengineKey === 'sk-test-volcengine-default-key-for-demo');
+    }
     if (config.aihubmixKey) setAihubmixKey(config.aihubmixKey);
     if (config.aihubmixEndpoint) setAihubmixEndpoint(config.aihubmixEndpoint);
     setDefaultProvider(config.defaultProvider);
@@ -115,6 +120,20 @@ export default function ApiKeyPage() {
           <p style={{ color: '#9ca3af' }}>
             请配置您的视频生成API密钥以开始使用
           </p>
+          {hasDefaultKey && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem 1rem',
+              backgroundColor: 'rgba(34, 197, 94, 0.1)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              borderRadius: '0.5rem',
+              color: '#22c55e',
+              fontSize: '0.875rem',
+              display: 'inline-block'
+            }}>
+              ✅ 已配置默认测试Key，可以直接体验功能
+            </div>
+          )}
         </div>
 
         {/* 配置表单 */}

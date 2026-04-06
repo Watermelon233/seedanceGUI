@@ -34,10 +34,11 @@ export function getApiConfig(): ApiConfig {
     console.error('读取API配置失败:', error);
   }
 
+  // 返回默认配置（包含测试API Key）
   return {
-    volcengineKey: null,
+    volcengineKey: 'sk-test-volcengine-default-key-for-demo',
     aihubmixKey: null,
-    aihubmixEndpoint: 'https://api.aihubmix.com', // 默认API接入点
+    aihubmixEndpoint: 'https://api.aihubmix.com',
     defaultProvider: 'volcengine'
   };
 }
