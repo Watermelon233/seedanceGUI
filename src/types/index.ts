@@ -1,41 +1,169 @@
 /**
- * 原有类型定义（从 types.ts 迁移过来）
+ * 纯前端版本类型定义
+ * 移除用户系统、批量管理、下载管理等复杂功能
+ * 保留核心视频生成功能
  */
-export type AspectRatio = '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
 
+// ============================================================
+// 基础类型
+// ============================================================
+
+export type AspectRatio = 'adaptive' | '21:9' | '16:9' | '4:3' | '1:1' | '3:4' | '9:16';
 export type Duration = 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15;
-
 export type ModelId = 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-fast-vip' | 'seedance-2.0-vip';
+/** @deprecated 使用 VideoGenerationMode 代替 */
+export type ReferenceMode = '全能参考' | '首帧参考' | '尾帧参考';
 
 // ============================================================
-// 用户认证类型
+// 视频生成模式相关类型（新4种模式）
 // ============================================================
 
-export interface User {
-  id: number;
-  email: string;
-  role: 'user' | 'admin';
-  status: 'active' | 'disabled';
-  credits: number;
-  createdAt?: string;
-  updatedAt?: string;
-  lastCheckInAt?: string;
+/**
+ * 视频生成模式枚举
+ * 对应官方API的4种视频生成模式
+ */
+export enum VideoGenerationMode {
+  TEXT_TO_VIDEO = 'text_to_video',                        // 文生视频
+  IMAGE_TO_VIDEO_FIRST_FRAME = 'image_to_video_first_frame',  // 图生视频-首帧
+  IMAGE_TO_VIDEO_FIRST_LAST = 'image_to_video_first_last',    // 图生视频-首尾帧
+  IMAGE_TO_VIDEO_REFERENCE = 'image_to_video_reference'       // 图生视频-参考图
 }
 
-export interface LoginCredentials {
-  email: string;
-  password: string;
+/**
+ * 模式配置接口
+ */
+export interface ModeConfig {
+  minImages: number;              // 最少图片数
+  maxImages: number;              // 最多图片数
+  defaultRatio: AspectRatio;      // 默认比例
+  useRole: boolean;               // 是否使用role字段
+  roleType?: 'first_last' | 'reference'; // role类型
 }
 
-export interface RegisterCredentials {
-  email: string;
-  password: string;
-  emailCode: string;
+/**
+ * 模式选项（UI显示）
+ */
+export interface ModeOption {
+  value: VideoGenerationMode;
+  label: string;
+  description: string;
+  icon?: string;
 }
 
-export interface AuthResponse {
-  apiKey: string | null;
-  user: User;
+/**
+ * 4种模式的配置规则
+ */
+export const MODE_CONFIG: Record<VideoGenerationMode, ModeConfig> = {
+  [VideoGenerationMode.TEXT_TO_VIDEO]: {
+    minImages: 0,
+    maxImages: 0,
+    defaultRatio: '16:9',
+    useRole: false
+  },
+  [VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_FRAME]: {
+    minImages: 1,
+    maxImages: 1,
+    defaultRatio: 'adaptive',
+    useRole: false  // ⚠️ 关键：不设置role
+  },
+  [VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_LAST]: {
+    minImages: 2,
+    maxImages: 2,
+    defaultRatio: 'adaptive',
+    useRole: true,
+    roleType: 'first_last'
+  },
+  [VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE]: {
+    minImages: 1,
+    maxImages: 9,
+    defaultRatio: '16:9',
+    useRole: true,
+    roleType: 'reference'
+  }
+};
+
+/**
+ * UI显示的模式选项
+ */
+export const MODE_OPTIONS: ModeOption[] = [
+  {
+    value: VideoGenerationMode.TEXT_TO_VIDEO,
+    label: '文生视频',
+    description: '纯文本生成视频，无需上传图片',
+    icon: '📝'
+  },
+  {
+    value: VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_FRAME,
+    label: '图生视频-首帧',
+    description: '上传1张图片作为首帧参考',
+    icon: '🖼️'
+  },
+  {
+    value: VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_LAST,
+    label: '图生视频-首尾帧',
+    description: '上传2张图片控制首尾帧',
+    icon: '🎬'
+  },
+  {
+    value: VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE,
+    label: '图生视频-参考图',
+    description: '上传1-9张图片作为风格参考',
+    icon: '🎨'
+  }
+];
+
+/**
+ * 获取模式配置
+ */
+export function getModeConfig(mode: VideoGenerationMode): ModeConfig {
+  return MODE_CONFIG[mode];
+}
+
+/**
+ * 验证图片数量
+ */
+export function validateImageCount(mode: VideoGenerationMode, count: number): {
+  valid: boolean;
+  error?: string;
+} {
+  const config = getModeConfig(mode);
+
+  if (count < config.minImages) {
+    return {
+      valid: false,
+      error: `${MODE_OPTIONS.find(m => m.value === mode)?.label}模式至少需要${config.minImages}张图片`
+    };
+  }
+
+  if (count > config.maxImages) {
+    return {
+      valid: false,
+      error: `${MODE_OPTIONS.find(m => m.value === mode)?.label}模式最多支持${config.maxImages}张图片`
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * 根据模式获取图片的role
+ */
+export function getImageRole(mode: VideoGenerationMode, index: number): string | undefined {
+  const config = getModeConfig(mode);
+
+  if (!config.useRole) {
+    return undefined;
+  }
+
+  if (config.roleType === 'first_last') {
+    return index === 0 ? 'first_frame' : 'last_frame';
+  }
+
+  if (config.roleType === 'reference') {
+    return 'reference_image';
+  }
+
+  return undefined;
 }
 
 // ============================================================
@@ -69,7 +197,9 @@ export const API_PROVIDERS: ApiProviderInfo[] = [
   }
 ];
 
-// 删除旧的JimengSessionAccount相关类型，替换为新的API供应商类型
+// ============================================================
+// 模型配置
+// ============================================================
 
 export interface ModelOption {
   value: ModelId;
@@ -77,32 +207,32 @@ export interface ModelOption {
   description: string;
 }
 
-export interface AppViewOption {
-  id: AppView;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent?: string;
-}
+export const MODEL_OPTIONS: ModelOption[] = [
+  {
+    value: 'seedance-2.0',
+    label: 'Seedance 2.0',
+    description: '全能主角，音视频图均可参考 (暂不支持真人入镜)',
+  },
+  {
+    value: 'seedance-2.0-vip',
+    label: 'Seedance 2.0 VIP',
+    description: 'VIP专属720p全能模型，音视频图均可参考',
+  },
+  {
+    value: 'seedance-2.0-fast',
+    label: 'Seedance 2.0 Fast',
+    description: '精简时长，音视频图均可参考 (暂不支持真人入镜)',
+  },
+  {
+    value: 'seedance-2.0-fast-vip',
+    label: 'Seedance 2.0 Fast VIP',
+    description: 'VIP专属720p快速模型，音视频图均可参考',
+  },
+];
 
-export enum AppView {
-  LOGIN = 'LOGIN',
-  REGISTER = 'REGISTER',
-  SINGLE_TASK = 'SINGLE_TASK',
-  BATCH_MANAGEMENT = 'BATCH_MANAGEMENT',
-  DOWNLOAD_MANAGEMENT = 'DOWNLOAD_MANAGEMENT',
-  SETTINGS = 'SETTINGS',
-  ADMIN = 'ADMIN',
-  PROFILE = 'PROFILE',
-}
-
-export type ReferenceMode = '全能参考' | '首帧参考' | '尾帧参考';
-
-export interface UploadedImage {
-  id: string;
-  file: File;
-  previewUrl: string;
-  index: number;
-}
+// ============================================================
+// 视频生成相关类型
+// ============================================================
 
 export interface GenerateVideoRequest {
   prompt: string;
@@ -129,6 +259,17 @@ export interface GenerationState {
   error?: string;
 }
 
+export interface UploadedImage {
+  id: string;
+  file: File;
+  previewUrl: string;
+  index: number;
+}
+
+// ============================================================
+// 常量配置
+// ============================================================
+
 export interface RatioOption {
   value: AspectRatio;
   label: string;
@@ -137,6 +278,7 @@ export interface RatioOption {
 }
 
 export const RATIO_OPTIONS: RatioOption[] = [
+  { value: 'adaptive', label: '自适应 (首尾帧)', widthRatio: 0, heightRatio: 0 },
   { value: '21:9', label: '21:9', widthRatio: 21, heightRatio: 9 },
   { value: '16:9', label: '16:9', widthRatio: 16, heightRatio: 9 },
   { value: '4:3', label: '4:3', widthRatio: 4, heightRatio: 3 },
@@ -149,54 +291,61 @@ export const DURATION_OPTIONS: Duration[] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 1
 
 export const REFERENCE_MODES: ReferenceMode[] = ['全能参考', '首帧参考', '尾帧参考'];
 
-export const MODEL_OPTIONS: ModelOption[] = [
-  {
-    value: 'seedance-2.0',
-    label: 'Seedance 2.0',
-    description: '全能主角，音视频图均可参考 (暂不支持真人入镜)',
-  },
-  {
-    value: 'seedance-2.0-vip',
-    label: 'Seedance 2.0 VIP',
-    description: 'VIP专属720p全能模型，音视频图均可参考',
-  },
-  {
-    value: 'seedance-2.0-fast',
-    label: 'Seedance 2.0 Fast',
-    description: '精简时长，音视频图均可参考 (暂不支持真人入镜)',
-  },
-  {
-    value: 'seedance-2.0-fast-vip',
-    label: 'Seedance 2.0 Fast VIP',
-    description: 'VIP专属720p快速模型，音视频图均可参考',
-  },
-];
+// ============================================================
+// 任务管理相关类型
+// ============================================================
 
-/**
- * 项目管理相关类型定义（新增）
- */
+export type TaskKind = 'single' | 'batch';
 
-/**
- * 项目
- */
+export type TaskStatus =
+  | 'pending'     // 等待中
+  | 'generating'  // 生成中
+  | 'completed'   // 已完成
+  | 'failed'      // 出错
+  | 'cancelled';  // 已取消
+
+export interface Task {
+  id: number;
+  project_id: number;
+  prompt: string;
+  model_key: string;
+  ratio: string;
+  video_duration: number;
+  status: TaskStatus;
+  task_kind: TaskKind;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  completed_at?: string | null;
+  updated_at?: string;
+}
+
+export interface TaskAsset {
+  id: number;
+  task_id: number;
+  asset_type: 'image' | 'audio';
+  file_path: string;
+  file_name?: string;
+  file_size?: number;
+  image_uri?: string;
+  sort_order?: number;
+  created_at?: string;
+}
+
+// ============================================================
+// 项目管理相关类型（简化版本）
+// ============================================================
+
 export interface Project {
   id: number;
   name: string;
   description?: string;
-  settings_json?: string;
-  video_save_path?: string;
-  default_concurrent?: number;
-  default_min_interval?: number;
-  default_max_interval?: number;
   task_count?: number;
-  completed_count?: number;
   created_at: string;
   updated_at: string;
 }
 
-/**
- * 项目设置
- */
 export interface ProjectSettings {
   model?: string;
   ratio?: string;
@@ -204,179 +353,26 @@ export interface ProjectSettings {
   referenceMode?: string;
 }
 
-/**
- * 任务
- */
-export interface Task {
-  id: number;
-  project_id: number;
-  batch_id?: number;
-  prompt: string;
-  task_kind: TaskKind;
-  source_task_id?: number | null;
-  row_group_id?: string | null;
-  row_index?: number | null;
-  video_count: number;
-  output_index?: number | null;
-  status: TaskStatus;
-  submit_id?: string | null;
-  history_id?: string | null;
-  item_id?: string | null;
-  video_url?: string | null;
-  video_path?: string | null;
-  download_status?: DownloadStatus | null;
-  download_path?: string | null;
-  downloaded_at?: string | null;
-  submitted_at?: string | null;
-  account_info?: string | null;
-  progress?: string | null;
-  audio_path?: string;
-  audio_uri?: string;
-  send_count?: number;
-  last_sent_at?: string;
-  created_at: string;
-  updated_at: string;
-  started_at?: string;
-  completed_at?: string;
-  error_message?: string | null;
-  retry_count?: number;
-  project_name?: string;
-  assets?: TaskAsset[];
-}
+// ============================================================
+// 设置相关类型
+// ============================================================
 
-export type TaskKind = 'draft' | 'output';
-
-/**
- * 任务状态
- */
-export type TaskStatus =
-  | 'pending'     // 等待中
-  | 'generating'  // 生成中
-  | 'done'        // 已完成
-  | 'error'       // 出错
-  | 'cancelled';  // 已取消
-
-/**
- * 任务素材
- */
-export interface TaskAsset {
-  id: number;
-  task_id: number;
-  asset_type: 'image' | 'audio';
-  file_path: string;
-  image_uri?: string;
-  sort_order: number;
-}
-
-/**
- * 批量任务
- */
-export interface Batch {
-  id: number;
-  name?: string;
-  project_id: number;
-  task_ids: string; // JSON 数组
-  status: BatchStatus;
-  total_count: number;
-  completed_count: number;
-  failed_count: number;
-  cancelled_count: number;
-  concurrent_count: number;
-  min_interval: number;
-  max_interval: number;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-}
-
-/**
- * 批量任务状态
- */
-export type BatchStatus =
-  | 'pending'    // 等待中
-  | 'running'    // 运行中
-  | 'paused'     // 已暂停
-  | 'done'       // 已完成
-  | 'error'      // 出错
-  | 'cancelled'; // 已取消
-
-export interface BatchTaskSnapshot {
-  taskId: number;
-  prompt: string;
-  status: TaskStatus;
-  progress?: string;
-  errorMessage?: string;
-  submitId?: string;
-  historyId?: string;
-  itemId?: string;
-  videoUrl?: string;
-  sourceTaskId?: number;
-  rowGroupId?: string;
-  outputIndex?: number;
-  assetCount?: number;
-}
-
-export interface BatchStatusDetail {
-  batchId: number;
-  projectId: number;
-  name?: string;
-  status: BatchStatus;
-  totalCount: number;
-  completedCount: number;
-  failedCount: number;
-  cancelledCount: number;
-  currentRunning: number;
-  queueLength: number;
-  concurrentCount: number;
-  createdAt?: string;
-  startedAt?: string;
-  completedAt?: string;
-  tasks: BatchTaskSnapshot[];
-}
-
-export interface InvalidBatchTask {
-  taskId: number;
-  prompt: string;
-  reason: string;
-}
-
-export interface BatchStartResult {
-  batchId: number;
-  totalTasks: number;
-}
-
-/**
- * 全局设置
- */
 export interface Settings {
   model?: string;
   ratio?: string;
   duration?: string;
   reference_mode?: string;
-  download_path?: string;
-  max_concurrent?: string;
-  min_interval?: string;
-  max_interval?: string;
+  theme?: 'light' | 'dark' | 'auto';
+  language?: 'zh-CN' | 'en-US';
+  showAdvancedOptions?: boolean;
+  autoSaveDrafts?: boolean;
+  [key: string]: string | number | boolean | undefined;
 }
 
-/**
- * 定时任务
- */
-export interface Schedule {
-  id: number;
-  name: string;
-  project_id?: number;
-  task_ids?: string; // JSON 数组
-  cron_expression: string;
-  enabled: number;
-  last_run_at?: string;
-  next_run_at?: string;
-  created_at: string;
-}
+// ============================================================
+// API响应类型
+// ============================================================
 
-/**
- * API 响应
- */
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
@@ -384,61 +380,20 @@ export interface ApiResponse<T = any> {
   message?: string;
 }
 
-/**
- * 生成历史
- */
-export interface GenerationHistory {
-  id: number;
-  task_id: number;
-  batch_id?: string;
-  request_data?: string;
-  response_data?: string;
-  created_at: string;
+// ============================================================
+// 应用视图类型（简化版本）
+// ============================================================
+
+export enum AppView {
+  SINGLE_TASK = 'SINGLE_TASK',
+  SETTINGS = 'SETTINGS',
+  HOME = 'HOME',
+  CONFIG = 'CONFIG',
 }
 
-/**
- * 下载管理相关类型定义（新增）
- */
-
-/**
- * 下载状态
- */
-export type DownloadStatus =
-  | 'pending'     // 待下载
-  | 'downloading' // 下载中
-  | 'done'        // 已下载
-  | 'failed'      // 下载失败
-  | 'generating'; // 生成中
-
-/**
- * 下载任务
- */
-export interface DownloadTask {
-  id: number;
-  prompt: string;
-  status: TaskStatus;
-  download_status: DownloadStatus;
-  video_url?: string;
-  video_path?: string;
-  download_path?: string;
-  downloaded_at?: string;
-  account_info?: string;
-  submit_id?: string;
-  history_id?: string;
-  created_at: string;
-  completed_at?: string;
-  project_name?: string;
-  hasHistory: boolean;
-  model_type: 'image' | 'video';
-  effective_download_status: DownloadStatus;
-}
-
-/**
- * 下载任务列表（分页）
- */
-export interface DownloadTaskList {
-  tasks: DownloadTask[];
-  total: number;
-  page: number;
-  pageSize: number;
+export interface AppViewOption {
+  id: AppView;
+  label: string;
+  icon?: React.ComponentType<{ className?: string }>;
+  accent?: string;
 }
