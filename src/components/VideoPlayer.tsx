@@ -1,4 +1,5 @@
 import { SpinnerIcon, FilmIcon, DownloadIcon } from './Icons';
+import { getApiConfig } from '../services/localStorageService';
 
 interface VideoPlayerProps {
   videoUrl: string | null;
@@ -8,14 +9,32 @@ interface VideoPlayerProps {
   progress?: string;
 }
 
+/**
+ * 获取 API Key 用于视频代理认证
+ */
+function getApiKey(): string {
+  const config = getApiConfig();
+  return config.aihubmixKey || '';
+}
+
+/**
+ * 将 aihubmix 视频 URL 转换为代理 URL
+ * aihubmix 视频需要认证，通过本地代理添加 Authorization 头
+ */
 function proxyUrl(url: string): string {
-  // aihubmix 的视频直接返回，不需要代理
-  if (url.includes('aihubmix.com')) {
-    return url;
+  // aihubmix 的视频需要通过代理添加认证
+  if (url.includes('aihubmix.com') && url.includes('/content')) {
+    // 提取 taskId: https://aihubmix.com/v1/videos/{taskId}/content
+    const match = url.match(/\/v1\/videos\/(.+)\/content/);
+    if (match) {
+      const taskId = match[1];
+      const apiKey = getApiKey();
+      // 通过代理服务器访问，API key 作为查询参数传递
+      return `http://localhost:3002/api/v1/videos/${taskId}/content?key=${encodeURIComponent(apiKey)}`;
+    }
   }
-  // 其他来源使用代理（如果有的话）
+  // 其他来源直接返回
   return url;
-  // return `/api/video-proxy?url=${encodeURIComponent(url)}`;
 }
 
 export default function VideoPlayer({

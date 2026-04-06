@@ -97,9 +97,95 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 处理视频内容下载 (带认证)
+  if (req.method === 'GET' && req.url.match(/^\/api\/v1\/videos\/[^\/]+\/content/)) {
+    // 从路径提取 taskId: /api/v1/videos/{taskId}/content
+    // 需要先解析 URL 以获取查询参数
+    const urlObj = new URL(req.url, `http://${req.headers.host}`);
+    const pathMatch = urlObj.pathname.match(/^\/api\/v1\/videos\/(.+)\/content$/);
+    const taskId = pathMatch ? pathMatch[1] : null;
+
+    if (!taskId) {
+      res.writeHead(400);
+      res.end('Invalid task ID');
+      return;
+    }
+
+    // 优先从 Authorization header 获取，其次从查询参数获取
+    let authHeader = req.headers['authorization'];
+    if (!authHeader && urlObj.searchParams.has('key')) {
+      authHeader = `Bearer ${urlObj.searchParams.get('key')}`;
+    }
+
+    if (!authHeader) {
+      res.writeHead(401);
+      res.end('Authorization required');
+      return;
+    }
+
+    console.log('[代理] GET /api/v1/videos/' + taskId + '/content (视频下载)');
+    console.log('[代理] Authorization:', authHeader.substring(0, 20) + '...');
+
+    const options = {
+      hostname: 'aihubmix.com',
+      port: 443,
+      path: `/v1/videos/${taskId}/content`,
+      method: 'GET',
+      headers: {
+        'Authorization': authHeader,
+        host: 'aihubmix.com'
+      },
+      timeout: TIMEOUT
+    };
+
+    const proxyReq = https.request(options, (proxyRes) => {
+      console.log('[代理] 视频下载响应状态:', proxyRes.statusCode);
+      console.log('[代理] Content-Type:', proxyRes.headers['content-type']);
+
+      // 设置 CORS 和视频流响应头
+      const headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
+        'Content-Length': proxyRes.headers['content-length']
+      };
+
+      res.writeHead(proxyRes.statusCode, headers);
+      proxyRes.pipe(res);
+
+      proxyRes.on('end', () => {
+        console.log('[代理] 视频传输完成');
+      });
+    });
+
+    proxyReq.setTimeout(TIMEOUT, () => {
+      proxyReq.destroy();
+      res.writeHead(408);
+      res.end(JSON.stringify({ error: 'Request timeout' }));
+    });
+
+    proxyReq.on('error', (err) => {
+      console.error('[代理] 视频下载错误:', err);
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err.message }));
+    });
+
+    req.pipe(proxyReq);
+    return;
+  }
+
+  // 处理任务状态查询
   if (req.method === 'GET' && req.url.startsWith('/api/v1/videos/')) {
-    const taskId = req.url.split('/').pop();
-    console.log('[代理] GET /api/v1/videos/' + taskId);
+    const pathParts = req.url.split('/');
+    const taskId = pathParts[4]; // /api/v1/videos/{taskId}
+
+    // 如果是 /content 请求，已经在上面的条件处理了
+    if (pathParts[5] === 'content') {
+      // 这个分支不会执行，因为上面的条件优先匹配
+      return;
+    }
+
+    console.log('[代理] GET /api/v1/videos/' + taskId + ' (状态查询)');
 
     const options = {
       hostname: 'aihubmix.com',
