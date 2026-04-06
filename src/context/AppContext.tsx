@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, ReactNode } from 'react';
-import type { Project, Task, Settings, User } from '../types/index';
+import type { Project, Task, Settings } from '../types/index';
 import * as projectService from '../services/projectService';
 import * as taskService from '../services/taskService';
 import type { GetProjectTasksOptions } from '../services/projectService';
@@ -113,7 +113,6 @@ function appReducer(state: AppState, action: Action): AppState {
 interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<Action>;
-  currentUser: User | null;
   // Project actions
   loadProjects: () => Promise<void>;
   createProjectAction: (name: string, description?: string, settings?: Record<string, any>) => Promise<Project>;
@@ -134,20 +133,10 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 
 // ==================== Provider ====================
 
-export function AppProvider({ children, currentUser }: { children: ReactNode; currentUser: User | null }) {
+export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   const loadProjects = useCallback(async () => {
-    if (!currentUser) {
-      dispatch({ type: 'SET_PROJECTS', payload: [] });
-      dispatch({ type: 'SET_CURRENT_PROJECT', payload: null });
-      dispatch({ type: 'SET_TASKS', payload: [] });
-      dispatch({ type: 'SET_CURRENT_TASK', payload: null });
-      dispatch({ type: 'SET_ERROR', payload: null });
-      dispatch({ type: 'SET_LOADING', payload: false });
-      return;
-    }
-
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
       const projects = await projectService.getProjects();
@@ -157,7 +146,7 @@ export function AppProvider({ children, currentUser }: { children: ReactNode; cu
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     void loadProjects();
@@ -230,18 +219,13 @@ export function AppProvider({ children, currentUser }: { children: ReactNode; cu
   }, []);
 
   const loadSettings = useCallback(async () => {
-    if (!currentUser) {
-      dispatch({ type: 'SET_SETTINGS', payload: {} });
-      return;
-    }
-
     try {
       const settings = await settingsService.getSettings();
       dispatch({ type: 'SET_SETTINGS', payload: settings });
     } catch (error) {
       console.error('加载设置失败:', error);
     }
-  }, [currentUser]);
+  }, []);
 
   useEffect(() => {
     void loadSettings();
@@ -257,7 +241,6 @@ export function AppProvider({ children, currentUser }: { children: ReactNode; cu
   const value = useMemo<AppContextValue>(() => ({
     state,
     dispatch,
-    currentUser,
     loadProjects,
     createProjectAction,
     updateProjectAction,
@@ -271,7 +254,6 @@ export function AppProvider({ children, currentUser }: { children: ReactNode; cu
     updateSettingsAction,
   }), [
     state,
-    currentUser,
     loadProjects,
     createProjectAction,
     updateProjectAction,

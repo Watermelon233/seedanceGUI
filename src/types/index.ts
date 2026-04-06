@@ -34,9 +34,42 @@ export interface RegisterCredentials {
 }
 
 export interface AuthResponse {
-  sessionId: string;
+  apiKey: string | null;
   user: User;
 }
+
+// ============================================================
+// API供应商相关类型
+// ============================================================
+
+export type ApiProvider = 'volcengine' | 'aihubmix';
+
+export interface ApiProviderConfig {
+  provider: ApiProvider;
+  apiKey: string;
+  keyName?: string;
+}
+
+export interface ApiProviderInfo {
+  name: ApiProvider;
+  displayName: string;
+  description?: string;
+}
+
+export const API_PROVIDERS: ApiProviderInfo[] = [
+  {
+    name: 'volcengine',
+    displayName: '火山方舟官方API',
+    description: '官方提供，稳定可靠'
+  },
+  {
+    name: 'aihubmix',
+    displayName: 'Aihubmix聚合API',
+    description: '多厂商聚合，性价比高'
+  }
+];
+
+// 删除旧的JimengSessionAccount相关类型，替换为新的API供应商类型
 
 export interface ModelOption {
   value: ModelId;
@@ -138,35 +171,6 @@ export const MODEL_OPTIONS: ModelOption[] = [
     description: 'VIP专属720p快速模型，音视频图均可参考',
   },
 ];
-
-export interface JimengSessionAccount {
-  id: number;
-  userId: number;
-  name: string;
-  sessionId: string;
-  isDefault: boolean;
-  isEnabled: boolean;
-  priority: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface JimengSessionAccountInput {
-  name?: string;
-  sessionId: string;
-  isEnabled?: boolean;
-  priority?: number;
-}
-
-export type EffectiveSessionSource = 'user_default' | 'legacy_global' | 'env_default' | 'none';
-
-export interface EffectiveSessionResolution {
-  source: EffectiveSessionSource;
-  sessionId: string;
-  account: JimengSessionAccount | null;
-  accounts: JimengSessionAccount[];
-  defaultAccount: JimengSessionAccount | null;
-}
 
 /**
  * 项目管理相关类型定义（新增）

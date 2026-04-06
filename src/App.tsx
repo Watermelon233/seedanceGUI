@@ -2,32 +2,24 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Sidebar from './components/Sidebar';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
+import ApiKeyConfigPage from './pages/ApiKeyConfigPage';
 import AdminPage from './pages/AdminPage';
 import SingleTaskPage from './pages/SingleTaskPage';
 import BatchManagementPage from './pages/BatchManagement';
 import SettingsPage from './pages/Settings';
 import DownloadManagementPage from './pages/DownloadManagement';
-import type { User } from './types';
-import { getCurrentUser } from './services/authService';
+import { getApiKey } from './services/authService';
 
-// 受保护的路由组件
-function ProtectedRoute({
+// API Key 路由保护组件
+function ApiKeyProtectedRoute({
   children,
-  requireAdmin = false,
-  currentUser,
 }: {
   children: React.ReactNode;
-  requireAdmin?: boolean;
-  currentUser: User | null;
 }) {
-  if (!currentUser) {
-    return <Navigate to="/login" replace />;
-  }
+  const apiKey = getApiKey();
 
-  if (requireAdmin && currentUser.role !== 'admin') {
-    return <Navigate to="/" replace />;
+  if (!apiKey) {
+    return <Navigate to="/config" replace />;
   }
 
   return <>{children}</>;
@@ -35,17 +27,13 @@ function ProtectedRoute({
 
 // 主布局组件（带侧边栏）
 function MainLayout({
-  currentUser,
-  onLogout,
   children,
 }: {
-  currentUser: User | null;
-  onLogout: () => void;
   children: React.ReactNode;
 }) {
   return (
     <div className="min-h-screen bg-[#0f111a]">
-      <Sidebar currentUser={currentUser} onLogout={onLogout} />
+      <Sidebar />
       <main className="lg:pl-60 pt-16 lg:pt-0 min-h-screen">
         {children}
       </main>
@@ -54,31 +42,29 @@ function MainLayout({
 }
 
 function AppContent() {
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [hasApiKey, setHasApiKey] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const handleAuthSuccess = (user: User) => {
-    setCurrentUser(user);
-  };
-
-  // 加载当前用户
+  // 检查是否已配置 API Key
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const user = await getCurrentUser();
-        setCurrentUser(user);
-      } catch (error) {
-        console.error('加载用户信息失败:', error);
-      } finally {
-        setLoading(false);
+    const checkApiKey = () => {
+      const apiKey = getApiKey();
+      setHasApiKey(!!apiKey);
+      setLoading(false);
+    };
+
+    checkApiKey();
+
+    // 监听 localStorage 变化（当用户配置了 API Key 后）
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'seedance_api_key') {
+        checkApiKey();
       }
     };
-    loadUser();
-  }, []);
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-  };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // 加载过程中显示加载状态
   if (loading) {
@@ -97,79 +83,69 @@ function AppContent() {
   }
 
   return (
-    <AppProvider currentUser={currentUser}>
+    <AppProvider currentUser={null}>
       <Routes>
-        {/* 公开路由 */}
+        {/* API Key 配置页面（公开访问） */}
         <Route
-          path="/login"
+          path="/config"
           element={
-            currentUser ? (
+            hasApiKey ? (
               <Navigate to="/" replace />
             ) : (
-              <LoginPage onLoginSuccess={handleAuthSuccess} />
-            )
-          }
-        />
-        <Route
-          path="/register"
-          element={
-            currentUser ? (
-              <Navigate to="/" replace />
-            ) : (
-              <RegisterPage onRegisterSuccess={handleAuthSuccess} />
+              <ApiKeyConfigPage />
             )
           }
         />
 
-        {/* 受保护的路由 */}
+        {/* 受保护的路由（需要 API Key） */}
         <Route
           path="/"
           element={
-            <ProtectedRoute currentUser={currentUser}>
-              <MainLayout currentUser={currentUser} onLogout={handleLogout}>
+            <ApiKeyProtectedRoute>
+              <MainLayout>
                 <SingleTaskPage />
               </MainLayout>
-            </ProtectedRoute>
+            </ApiKeyProtectedRoute>
           }
         />
         <Route
           path="/batch"
           element={
-            <ProtectedRoute currentUser={currentUser}>
-              <MainLayout currentUser={currentUser} onLogout={handleLogout}>
+            <ApiKeyProtectedRoute>
+              <MainLayout>
                 <BatchManagementPage />
               </MainLayout>
-            </ProtectedRoute>
+            </ApiKeyProtectedRoute>
           }
         />
         <Route
           path="/download"
           element={
-            <ProtectedRoute currentUser={currentUser}>
-              <MainLayout currentUser={currentUser} onLogout={handleLogout}>
+            <ApiKeyProtectedRoute>
+              <MainLayout>
                 <DownloadManagementPage />
               </MainLayout>
-            </ProtectedRoute>
+            </ApiKeyProtectedRoute>
           }
         />
         <Route
           path="/settings"
           element={
-            <ProtectedRoute currentUser={currentUser}>
-              <MainLayout currentUser={currentUser} onLogout={handleLogout}>
+            <ApiKeyProtectedRoute>
+              <MainLayout>
                 <SettingsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </ApiKeyProtectedRoute>
           }
         />
         <Route
           path="/admin"
           element={
-            <ProtectedRoute requireAdmin currentUser={currentUser}>
-              <MainLayout currentUser={currentUser} onLogout={handleLogout}>
+            <ApiKeyProtectedRoute>
+              <MainLayout>
                 <AdminPage />
               </MainLayout>
-            </ProtectedRoute>
+            </ApiKeyProtectedRoute>
           }
         />
 
