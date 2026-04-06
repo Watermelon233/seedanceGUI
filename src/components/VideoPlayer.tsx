@@ -9,7 +9,13 @@ interface VideoPlayerProps {
 }
 
 function proxyUrl(url: string): string {
-  return `/api/video-proxy?url=${encodeURIComponent(url)}`;
+  // aihubmix 的视频直接返回，不需要代理
+  if (url.includes('aihubmix.com')) {
+    return url;
+  }
+  // 其他来源使用代理（如果有的话）
+  return url;
+  // return `/api/video-proxy?url=${encodeURIComponent(url)}`;
 }
 
 export default function VideoPlayer({
