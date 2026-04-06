@@ -29,11 +29,17 @@ function proxyUrl(url: string): string {
     if (match) {
       const taskId = match[1];
       const apiKey = getApiKey();
+      console.log('[VideoPlayer] 提取 taskId:', taskId);
+      console.log('[VideoPlayer] API Key 存在:', !!apiKey);
+      console.log('[VideoPlayer] API Key 长度:', apiKey?.length || 0);
       // 通过代理服务器访问，API key 作为查询参数传递
-      return `http://localhost:3002/api/v1/videos/${taskId}/content?key=${encodeURIComponent(apiKey)}`;
+      const proxied = `http://localhost:3002/api/v1/videos/${taskId}/content?key=${encodeURIComponent(apiKey)}`;
+      console.log('[VideoPlayer] 代理 URL 长度:', proxied.length);
+      return proxied;
     }
   }
   // 其他来源直接返回
+  console.log('[VideoPlayer] 非 aihubmix URL，直接返回');
   return url;
 }
 
@@ -78,6 +84,10 @@ export default function VideoPlayer({
 
   if (videoUrl) {
     const proxied = proxyUrl(videoUrl);
+
+    // 调试日志
+    console.log('[VideoPlayer] 原始 URL:', videoUrl);
+    console.log('[VideoPlayer] 代理 URL:', proxied);
 
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 p-4 md:p-8">

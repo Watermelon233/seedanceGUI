@@ -105,6 +105,12 @@ const server = http.createServer(async (req, res) => {
     const pathMatch = urlObj.pathname.match(/^\/api\/v1\/videos\/(.+)\/content$/);
     const taskId = pathMatch ? pathMatch[1] : null;
 
+    console.log('[代理] ========== 视频下载请求 ==========');
+    console.log('[代理] 原始 URL:', req.url);
+    console.log('[代理] 解析后 taskId:', taskId);
+    console.log('[代理] 查询参数 key 存在:', urlObj.searchParams.has('key'));
+    console.log('[代理] 请求头 Authorization:', req.headers['authorization'] ? '(存在)' : '(不存在)');
+
     if (!taskId) {
       res.writeHead(400);
       res.end('Invalid task ID');
@@ -114,17 +120,20 @@ const server = http.createServer(async (req, res) => {
     // 优先从 Authorization header 获取，其次从查询参数获取
     let authHeader = req.headers['authorization'];
     if (!authHeader && urlObj.searchParams.has('key')) {
-      authHeader = `Bearer ${urlObj.searchParams.get('key')}`;
+      const key = urlObj.searchParams.get('key');
+      console.log('[代理] 从查询参数获取 API Key:', key.substring(0, 15) + '...');
+      authHeader = `Bearer ${key}`;
     }
 
     if (!authHeader) {
+      console.log('[代理] ❌ 缺少 Authorization');
       res.writeHead(401);
       res.end('Authorization required');
       return;
     }
 
+    console.log('[代理] ✅ Authorization 已设置:', authHeader.substring(0, 25) + '...');
     console.log('[代理] GET /api/v1/videos/' + taskId + '/content (视频下载)');
-    console.log('[代理] Authorization:', authHeader.substring(0, 20) + '...');
 
     const options = {
       hostname: 'aihubmix.com',
