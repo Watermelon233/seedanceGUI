@@ -1,2 +1,3 @@
 - [Git Commit工作流程](memory/workflow_git_commit.md) — 开始新任务前和完成任务后必须进行git commit，确保代码安全和可追溯
 - [接力文件维护规范](memory/project_relay_file.md) — 统一使用单一接力文件，通过覆盖更新维护，避免文件数量持续增长
+- [纯前端架构决策](memory/frontend_architecture.md) — 2026年4月6日重大架构变更：从前后端架构迁移到纯前端应用，代码减少91%
