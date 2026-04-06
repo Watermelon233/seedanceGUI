@@ -6,9 +6,10 @@ node_modules/
 
 # 数据文件
 data/
+downloads/
 *.db
 *.db-*
-*.sqlite
+*..sqlite
 *.sqlite-*
 server/data/*.db
 server/data/*.sqlite
@@ -40,6 +41,7 @@ build/
 *.temp
 REFACTOR_PROGRESS.md
 simplified-App.tsx
+proxy-server.js  # 旧版本代理服务器，已被 proxy-server.cjs 替代
 
 # 备份文件
 *.backup.*
