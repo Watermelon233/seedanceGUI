@@ -1,67 +1,136 @@
 import type { GenerateVideoRequest, VideoGenerationResponse } from '../types';
-import { getAuthHeaders } from './authService';
+import { generateVideo as directGenerateVideo, getTaskStatus } from './directApiService';
+import { indexedDBService } from './indexedDBService';
 
+/**
+ * 生成视频（纯前端版本）
+ */
 export async function generateVideo(
   request: GenerateVideoRequest,
   onProgress?: (message: string) => void
 ): Promise<VideoGenerationResponse> {
-  const formData = new FormData();
-  formData.append('prompt', request.prompt);
-  formData.append('model', request.model);
-  formData.append('ratio', request.ratio);
-  formData.append('duration', String(request.duration));
+  try {
+    onProgress?.('正在提交视频生成请求...');
 
-  for (const file of request.files) {
-    formData.append('files', file);
+    // 调用纯前端API服务
+    const result = await directGenerateVideo({
+      prompt: request.prompt,
+      model: request.model,
+      ratio: request.ratio,
+      duration: request.duration,
+      imageFiles: request.files,
+    });
+
+    if (!result.success) {
+      throw new Error(result.error || '生成视频失败');
+    }
+
+    if (result.taskId) {
+      // 保存任务到IndexedDB
+      await indexedDBService.addTask({
+        prompt: request.prompt,
+        model: request.model,
+        ratio: request.ratio,
+        duration: request.duration,
+        status: 'generating',
+      });
+
+      // 轮询任务状态
+      return await pollTaskStatus(result.taskId, onProgress);
+    }
+
+    // 如果直接返回了视频URL
+    if (result.videoUrl) {
+      return {
+        created: Date.now(),
+        data: [{
+          url: result.videoUrl,
+          revised_prompt: request.prompt,
+        }],
+      };
+    }
+
+    throw new Error('未获取到视频结果');
+  } catch (error) {
+    throw error;
   }
+}
 
-  // 第1步: 提交任务
-  onProgress?.('正在提交视频生成请求...');
-  const submitRes = await fetch('/api/generate-video', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: formData,
-  });
-
-  const submitData = await submitRes.json();
-  if (!submitRes.ok) {
-    throw new Error(submitData.error || `提交失败 (HTTP ${submitRes.status})`);
-  }
-
-  const { taskId } = submitData;
-  if (!taskId) {
-    throw new Error('服务器未返回任务ID');
-  }
-
-  // 第2步: 轮询获取结果
-  onProgress?.('已提交，等待AI生成视频...');
-
-  const maxPollTime = 25 * 60 * 1000; // 25 分钟
-  const pollInterval = 3000; // 3 秒
+/**
+ * 轮询任务状态
+ */
+async function pollTaskStatus(
+  taskId: string,
+  onProgress?: (message: string) => void
+): Promise<VideoGenerationResponse> {
+  const maxPollTime = 25 * 60 * 1000; // 25分钟
+  const pollInterval = 3000; // 3秒
   const startTime = Date.now();
 
   while (Date.now() - startTime < maxPollTime) {
     await new Promise((resolve) => setTimeout(resolve, pollInterval));
 
-    const pollRes = await fetch(`/api/task/${taskId}`);
-    const pollData = await pollRes.json();
+    try {
+      onProgress?.('正在生成视频，请稍候...');
 
-    if (pollData.status === 'done') {
-      const result = pollData.result;
-      if (result?.data?.[0]?.url) {
-        return result;
+      const status = await getTaskStatus(taskId);
+
+      if (status.status === 'completed' && status.videoUrl) {
+        // 更新任务状态
+        await indexedDBService.updateTask(taskId, {
+          status: 'completed',
+          videoUrl: status.videoUrl,
+          completedAt: new Date().toISOString(),
+        });
+
+        return {
+          created: Date.now(),
+          data: [{
+            url: status.videoUrl,
+            revised_prompt: '',
+          }],
+        };
       }
-      throw new Error('未获取到视频结果');
-    }
 
-    if (pollData.status === 'error') {
-      throw new Error(pollData.error || '视频生成失败');
-    }
+      if (status.status === 'failed') {
+        await indexedDBService.updateTask(taskId, {
+          status: 'failed',
+          errorMessage: status.error,
+        });
 
-    if (pollData.progress) {
-      onProgress?.(pollData.progress);
+        throw new Error(status.error || '视频生成失败');
+      }
+
+    } catch (error) {
+      // 继续轮询
+      console.error('轮询错误:', error);
     }
   }
 
-  throw new Error('视频生成超时，请稍后重试');
+  throw new Error('视频生成超时，请稍后查看任务列表');
+}
+
+/**
+ * 获取任务列表
+ */
+export async function getTaskList(): Promise<any[]> {
+  try {
+    const tasks = await indexedDBService.getAllTasks();
+    return tasks;
+  } catch (error) {
+    console.error('获取任务列表失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 删除任务
+ */
+export async function deleteTask(taskId: string): Promise<void> {
+  try {
+    await indexedDBService.deleteTask(taskId);
+  } catch (error) {
+    console.error('删除任务失败:', error);
+    throw error;
+  }
 }

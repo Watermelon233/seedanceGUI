@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ApiKeyPage from './pages/ApiKeyPage';
+import SingleTaskPage from './pages/SingleTaskPage';
 import { hasApiKey } from './services/localStorageService';
 
 // 简单的导航菜单
@@ -40,6 +41,16 @@ function NavigationMenu() {
           }}
         >
           主页
+        </a>
+        <a
+          href="/generate"
+          style={{
+            color: location.pathname === '/generate' ? '#a855f7' : '#9ca3af',
+            textDecoration: 'none',
+            fontWeight: location.pathname === '/generate' ? '500' : '400'
+          }}
+        >
+          视频生成
         </a>
         <a
           href="/config"
@@ -203,24 +214,39 @@ function HomePage() {
           <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem' }}>
             🚀 开始使用
           </h3>
-          <p style={{ color: '#9ca3af', marginBottom: '1.5rem' }}>
-            前往 <strong style={{ color: '#a855f7' }}>API配置</strong> 页面设置您的API密钥
-          </p>
-          <a
-            href="/config"
-            style={{
-              display: 'inline-block',
-              padding: '0.75rem 2rem',
-              background: 'linear-gradient(to right, #a855f7, #ec4899)',
-              color: 'white',
-              textDecoration: 'none',
-              borderRadius: '0.5rem',
-              fontWeight: '500',
-              transition: 'all 0.3s'
-            }}
-          >
-            配置 API Key
-          </a>
+          <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a
+              href="/config"
+              style={{
+                display: 'inline-block',
+                padding: '0.75rem 2rem',
+                background: 'linear-gradient(to right, #a855f7, #ec4899)',
+                color: 'white',
+                textDecoration: 'none',
+                borderRadius: '0.5rem',
+                fontWeight: '500',
+                transition: 'all 0.3s'
+              }}
+            >
+              配置 API Key
+            </a>
+            <a
+              href="/generate"
+              style={{
+                display: 'inline-block',
+                padding: '0.75rem 2rem',
+                backgroundColor: '#1a1d2d',
+                color: '#e5e7eb',
+                textDecoration: 'none',
+                borderRadius: '0.5rem',
+                fontWeight: '500',
+                border: '1px solid #374151',
+                transition: 'all 0.3s'
+              }}
+            >
+              开始生成视频
+            </a>
+          </div>
         </div>
       </div>
     </div>
@@ -266,6 +292,14 @@ function AppContent() {
     <Routes>
       {/* 主页 - 不需要API Key */}
       <Route path="/" element={<HomePage />} />
+
+      {/* 视频生成页面 - 需要API Key */}
+      <Route
+        path="/generate"
+        element={
+          hasApiKey() ? <SingleTaskPage /> : <Navigate to="/config" replace />
+        }
+      />
 
       {/* API配置页面 - 二级页面 */}
       <Route path="/config" element={<ApiKeyPage />} />
