@@ -15,6 +15,79 @@ export type ModelId = 'seedance-2.0' | 'seedance-2.0-fast' | 'seedance-2.0-fast-
 export type ReferenceMode = '全能参考' | '首帧参考' | '尾帧参考';
 
 // ============================================================
+// 媒体类型（支持图片、音频、视频）
+// ============================================================
+
+/**
+ * 媒体类型枚举
+ */
+export enum MediaType {
+  IMAGE = 'image_url',
+  AUDIO = 'audio_url',
+  VIDEO = 'video_url'
+}
+
+/**
+ * 上传的媒体文件
+ */
+export interface MediaFile {
+  id: string;
+  file: File;
+  type: MediaType;
+  previewUrl: string;
+  index: number;
+}
+
+/**
+ * 根据文件类型检测MediaType
+ */
+export function detectMediaType(file: File): MediaType {
+  const type = file.type.toLowerCase();
+
+  if (type.startsWith('image/')) {
+    return MediaType.IMAGE;
+  } else if (type.startsWith('audio/')) {
+    return MediaType.AUDIO;
+  } else if (type.startsWith('video/')) {
+    return MediaType.VIDEO;
+  }
+
+  // 根据文件扩展名判断
+  const ext = file.name.toLowerCase().split('.').pop();
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+  const audioExts = ['mp3', 'wav', 'aac', 'ogg', 'm4a', 'flac'];
+  const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv'];
+
+  if (ext && imageExts.includes(ext)) return MediaType.IMAGE;
+  if (ext && audioExts.includes(ext)) return MediaType.AUDIO;
+  if (ext && videoExts.includes(ext)) return MediaType.VIDEO;
+
+  // 默认为图片
+  return MediaType.IMAGE;
+}
+
+/**
+ * 获取媒体文件的Role
+ */
+export function getMediaRole(type: MediaType, mode: VideoGenerationMode): string | undefined {
+  // 只有参考图模式支持音频和视频
+  if (mode !== VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE) {
+    return undefined;
+  }
+
+  switch (type) {
+    case MediaType.IMAGE:
+      return 'reference_image';
+    case MediaType.AUDIO:
+      return 'reference_audio';
+    case MediaType.VIDEO:
+      return 'reference_video';
+    default:
+      return undefined;
+  }
+}
+
+// ============================================================
 // 视频生成模式相关类型（新4种模式）
 // ============================================================
 

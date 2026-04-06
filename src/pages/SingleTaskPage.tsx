@@ -3,7 +3,7 @@ import type {
   AspectRatio,
   Duration,
   ModelId,
-  UploadedImage,
+  MediaFile,
   GenerationState,
 } from '../types/index';
 import {
@@ -14,7 +14,10 @@ import {
   MODE_OPTIONS,
   getModeConfig,
   validateImageCount,
-  getImageRole
+  getImageRole,
+  MediaType,
+  detectMediaType,
+  getMediaRole
 } from '../types/index';
 import { generateVideo } from '../services/videoService';
 import VideoPlayer from '../components/VideoPlayer';
@@ -24,7 +27,7 @@ import { useNavigate } from 'react-router-dom';
 let nextId = 0;
 
 export default function SingleTaskPage() {
-  const [images, setImages] = useState<UploadedImage[]>([]);
+  const [mediaFiles, setMediaFiles] = useState<MediaFile[]>([]);
   const [prompt, setPrompt] = useState('');
   const [model, setModel] = useState<ModelId>('seedance-2.0-fast');
   const [ratio, setRatio] = useState<AspectRatio>('16:9');
@@ -43,55 +46,59 @@ export default function SingleTaskPage() {
       if (!fileList) return;
 
       const config = getModeConfig(selectedMode);
-      const remaining = config.maxImages - images.length;
+      const remaining = config.maxImages - mediaFiles.length;
       if (remaining <= 0) {
-        alert(`⚠️ 当前模式最多支持${config.maxImages}张图片`);
+        alert(`⚠️ 当前模式最多支持${config.maxImages}个媒体文件`);
         return;
       }
 
       const newFiles = Array.from(fileList).slice(0, remaining);
-      const newImages: UploadedImage[] = newFiles.map((file, i) => ({
-        id: `img-${++nextId}`,
-        file,
-        previewUrl: URL.createObjectURL(file),
-        index: images.length + i + 1,
-      }));
+      const newMediaFiles: MediaFile[] = newFiles.map((file, i) => {
+        const mediaType = detectMediaType(file);
+        return {
+          id: `media-${++nextId}`,
+          file,
+          type: mediaType,
+          previewUrl: URL.createObjectURL(file),
+          index: mediaFiles.length + i + 1,
+        };
+      });
 
-      setImages([...images, ...newImages]);
+      setMediaFiles([...mediaFiles, ...newMediaFiles]);
     },
-    [images, selectedMode]
+    [mediaFiles, selectedMode]
   );
 
-  const removeImage = useCallback(
+  const removeMedia = useCallback(
     (id: string) => {
-      const removed = images.find((img) => img.id === id);
+      const removed = mediaFiles.find((media) => media.id === id);
       if (removed) URL.revokeObjectURL(removed.previewUrl);
 
-      const updated = images
-        .filter((img) => img.id !== id)
-        .map((img, i) => ({ ...img, index: i + 1 }));
-      setImages(updated);
+      const updated = mediaFiles
+        .filter((media) => media.id !== id)
+        .map((media, i) => ({ ...media, index: i + 1 }));
+      setMediaFiles(updated);
     },
-    [images]
+    [mediaFiles]
   );
 
-  const clearAllImages = useCallback(() => {
-    images.forEach((img) => URL.revokeObjectURL(img.previewUrl));
-    setImages([]);
-  }, [images]);
+  const clearAllMedia = useCallback(() => {
+    mediaFiles.forEach((media) => URL.revokeObjectURL(media.previewUrl));
+    setMediaFiles([]);
+  }, [mediaFiles]);
 
   const handleGenerate = useCallback(async () => {
     // 验证参数
     const config = getModeConfig(selectedMode);
-    const imageValidation = validateImageCount(selectedMode, images.length);
+    const mediaValidation = validateImageCount(selectedMode, mediaFiles.length);
 
-    if (!prompt.trim() && images.length === 0) {
-      alert('❌ 请输入提示词或上传图片');
+    if (!prompt.trim() && mediaFiles.length === 0) {
+      alert('❌ 请输入提示词或上传媒体文件');
       return;
     }
 
-    if (!imageValidation.valid) {
-      alert(`❌ ${imageValidation.error}`);
+    if (!mediaValidation.valid) {
+      alert(`❌ ${mediaValidation.error}`);
       return;
     }
 
@@ -105,7 +112,7 @@ export default function SingleTaskPage() {
     try {
       // 处理@图转换
       let processedPrompt = prompt.trim();
-      if (selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE && images.length > 0) {
+      if (selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE && mediaFiles.length > 0) {
         processedPrompt = processedPrompt.replace(/@图(\d+)/g, '[图$1]');
       }
 
@@ -115,7 +122,7 @@ export default function SingleTaskPage() {
           model,
           ratio,
           duration,
-          files: images.map((img) => img.file),
+          files: mediaFiles.map((media) => media.file),
         },
         (progress) => {
           setGeneration((prev) => ({ ...prev, progress }));
@@ -136,11 +143,11 @@ export default function SingleTaskPage() {
         error: error instanceof Error ? error.message : '未知错误',
       });
     }
-  }, [prompt, images, model, ratio, duration, generation.status, selectedMode]);
+  }, [prompt, mediaFiles, model, ratio, duration, generation.status, selectedMode]);
 
   const handleReset = () => {
     setPrompt('');
-    clearAllImages();
+    clearAllMedia();
     setGeneration({ status: 'idle' });
   };
 
@@ -189,11 +196,11 @@ export default function SingleTaskPage() {
           <div>
             <div className="flex justify-between items-center mb-2">
               <label className="text-sm font-bold text-gray-300">
-                参考图片
+                参考媒体（图片/音频/视频）
               </label>
-              {images.length > 0 && (
+              {mediaFiles.length > 0 && (
                 <button
-                  onClick={clearAllImages}
+                  onClick={clearAllMedia}
                   className="text-xs text-red-400 hover:text-red-300 transition-colors"
                 >
                   清除全部
@@ -202,36 +209,53 @@ export default function SingleTaskPage() {
             </div>
 
             {/* Thumbnails with Role标记 */}
-            {images.length > 0 && (
+            {mediaFiles.length > 0 && (
               <div className="flex flex-wrap gap-3 mb-3">
-                {images.map((img) => {
+                {mediaFiles.map((media) => {
                   const config = getModeConfig(selectedMode);
-                  const role = config.useRole ? getImageRole(selectedMode, img.index - 1) : null;
+                  const role = config.useRole ? getMediaRole(media.type, selectedMode) : null;
 
                   return (
                     <div
-                      key={img.id}
+                      key={media.id}
                       className="relative group w-20 h-20 flex-shrink-0"
                     >
-                      <img
-                        src={img.previewUrl}
-                        alt={`参考图 ${img.index}`}
-                        className="w-full h-full object-cover rounded-xl border border-gray-700"
-                      />
+                      {/* 根据媒体类型显示不同的预览 */}
+                      {media.type === MediaType.IMAGE ? (
+                        <img
+                          src={media.previewUrl}
+                          alt={`媒体文件 ${media.index}`}
+                          className="w-full h-full object-cover rounded-xl border border-gray-700"
+                        />
+                      ) : media.type === MediaType.AUDIO ? (
+                        <div className="w-full h-full bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl border border-gray-700 flex items-center justify-center">
+                          <span className="text-2xl">🎵</span>
+                        </div>
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-br from-blue-600 to-cyan-600 rounded-xl border border-gray-700 flex items-center justify-center">
+                          <span className="text-2xl">🎬</span>
+                        </div>
+                      )}
+
                       {/* 序号标记 */}
                       <span className="absolute top-0 left-0 bg-gradient-to-br from-purple-600 to-indigo-600 text-white text-[10px] px-1.5 py-0.5 rounded-tl-xl rounded-br-xl font-bold">
-                        图{img.index}
+                        {media.type === MediaType.IMAGE ? `图${media.index}` :
+                         media.type === MediaType.AUDIO ? `音${media.index}` :
+                         `视${media.index}`}
                       </span>
+
                       {/* Role标记 */}
                       {role && (
                         <span className="absolute bottom-0 left-0 right-0 bg-black/80 text-[9px] text-center py-0.5 rounded-b-xl font-medium truncate">
-                          {role === 'first_frame' ? '🎬 首帧' :
-                           role === 'last_frame' ? '🎬 尾帧' :
-                           `🎨 图${img.index}`}
+                          {role === 'reference_image' ? `🎨 图${media.index}` :
+                           role === 'reference_audio' ? `🎵 音${media.index}` :
+                           role === 'reference_video' ? `🎬 视${media.index}` :
+                           role}
                         </span>
                       )}
+
                       <button
-                        onClick={() => removeImage(img.id)}
+                        onClick={() => removeMedia(media.id)}
                         className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-gray-800 border border-gray-700 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 hover:border-red-600"
                       >
                         <CloseIcon className="w-3 h-3 text-white" />
@@ -262,9 +286,9 @@ export default function SingleTaskPage() {
                         <PlusIcon className="w-6 h-6" />
                       </div>
                       <span className="text-xs text-gray-500">
-                        {images.length === 0
-                          ? `点击或拖拽上传图片（${getModeConfig(selectedMode).minImages}-${getModeConfig(selectedMode).maxImages}张）`
-                          : `继续添加（${images.length}/${getModeConfig(selectedMode).maxImages}）`}
+                        {mediaFiles.length === 0
+                          ? `点击或拖拽上传媒体文件（${getModeConfig(selectedMode).minImages}-${getModeConfig(selectedMode).maxImages}个）`
+                          : `继续添加（${mediaFiles.length}/${getModeConfig(selectedMode).maxImages}）`}
                       </span>
                     </div>
                   </div>
@@ -289,7 +313,7 @@ export default function SingleTaskPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,audio/*,video/*"
               multiple
               className="hidden"
               onChange={(e) => {
@@ -371,10 +395,10 @@ export default function SingleTaskPage() {
                         setSelectedMode(option.value);
                         // 自动调整ratio为默认值
                         setRatio(config.defaultRatio);
-                        // 智能处理图片：文生视频清空，其他模式保留
-                        if (config.maxImages === 0 && images.length > 0) {
-                          if (confirm('切换到文生视频模式将清空所有图片，确认吗？')) {
-                            clearAllImages();
+                        // 智能处理媒体：文生视频清空，其他模式保留
+                        if (config.maxImages === 0 && mediaFiles.length > 0) {
+                          if (confirm('切换到文生视频模式将清空所有媒体文件，确认吗？')) {
+                            clearAllMedia();
                           } else {
                             return; // 取消切换
                           }
@@ -401,11 +425,11 @@ export default function SingleTaskPage() {
                         {option.description}
                       </div>
 
-                      {/* 图片要求 */}
+                      {/* 媒体要求 */}
                       <div className={`text-xs ${
                         isSelected ? 'text-purple-300' : 'text-gray-600'
                       }`}>
-                        {config.maxImages === 0 ? '📝 无需图片' : `🖼️ ${config.minImages}-${config.maxImages} 张图片`}
+                        {config.maxImages === 0 ? '📝 无需媒体' : `🖼️ ${config.minImages}-${config.maxImages} 个媒体`}
                       </div>
                     </button>
                   );

@@ -4,10 +4,7 @@ import { KeyIcon, CheckIcon, AlertCircleIcon, EyeIcon, EyeOffIcon } from '../com
 import {
   getApiConfig,
   saveApiConfig,
-  hasApiKey,
-  validateApiKeyFormat,
-  getCurrentApiKey,
-  getAihubmixEndpoint
+  validateApiKeyFormat
 } from '../services/localStorageService';
 
 type ApiProvider = 'volcengine' | 'aihubmix';

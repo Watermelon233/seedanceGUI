@@ -1,16 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, ReactNode } from 'react';
-import type { Project, Task, Settings } from '../types/index';
-import * as projectService from '../services/projectService';
+import type { Task, Settings } from '../types/index';
 import * as taskService from '../services/taskService';
-import type { GetProjectTasksOptions } from '../services/projectService';
-import type { CreateTaskPayload } from '../services/taskService';
 import * as settingsService from '../services/settingsService';
 
 // ==================== State Types ====================
 
 interface AppState {
-  projects: Project[];
-  currentProject: Project | null;
   tasks: Task[];
   currentTask: Task | null;
   settings: Settings;
@@ -21,11 +16,6 @@ interface AppState {
 type Action =
   | { type: 'SET_LOADING'; payload: boolean }
   | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_PROJECTS'; payload: Project[] }
-  | { type: 'SET_CURRENT_PROJECT'; payload: Project | null }
-  | { type: 'ADD_PROJECT'; payload: Project }
-  | { type: 'UPDATE_PROJECT'; payload: Project }
-  | { type: 'DELETE_PROJECT'; payload: number }
   | { type: 'SET_TASKS'; payload: Task[] }
   | { type: 'SET_CURRENT_TASK'; payload: Task | null }
   | { type: 'ADD_TASK'; payload: Task }
@@ -36,8 +26,6 @@ type Action =
 // ==================== Initial State ====================
 
 const initialState: AppState = {
-  projects: [],
-  currentProject: null,
   tasks: [],
   currentTask: null,
   settings: {},
@@ -53,30 +41,6 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, loading: action.payload };
     case 'SET_ERROR':
       return { ...state, error: action.payload };
-    case 'SET_PROJECTS':
-      return { ...state, projects: action.payload };
-    case 'SET_CURRENT_PROJECT':
-      return { ...state, currentProject: action.payload };
-    case 'ADD_PROJECT':
-      return { ...state, projects: [...state.projects, action.payload] };
-    case 'UPDATE_PROJECT':
-      return {
-        ...state,
-        projects: state.projects.map((p) =>
-          p.id === action.payload.id ? action.payload : p
-        ),
-        currentProject:
-          state.currentProject?.id === action.payload.id
-            ? action.payload
-            : state.currentProject,
-      };
-    case 'DELETE_PROJECT':
-      return {
-        ...state,
-        projects: state.projects.filter((p) => p.id !== action.payload),
-        currentProject:
-          state.currentProject?.id === action.payload ? null : state.currentProject,
-      };
     case 'SET_TASKS':
       return { ...state, tasks: action.payload };
     case 'SET_CURRENT_TASK':
@@ -113,20 +77,21 @@ function appReducer(state: AppState, action: Action): AppState {
 interface AppContextValue {
   state: AppState;
   dispatch: React.Dispatch<Action>;
-  // Project actions
-  loadProjects: () => Promise<void>;
-  createProjectAction: (name: string, description?: string, settings?: Record<string, any>) => Promise<Project>;
-  updateProjectAction: (id: number, data: Partial<Project>) => Promise<void>;
-  deleteProjectAction: (id: number) => Promise<void>;
-  selectProject: (project: Project | null) => void;
-  loadProjectTasks: (projectId: number, options?: GetProjectTasksOptions) => Promise<void>;
   // Task actions
-  createTaskAction: (projectId: number, payload: CreateTaskPayload) => Promise<Task>;
+  loadTasks: () => Promise<void>;
+  createTaskAction: (prompt: string, options?: {
+    model?: string;
+    ratio?: string;
+    duration?: number;
+  }) => Promise<Task>;
   updateTaskAction: (id: number, data: Partial<Task>) => Promise<void>;
   deleteTaskAction: (id: number) => Promise<void>;
+  selectTask: (task: Task | null) => void;
+  clearAllTasks: () => Promise<void>;
   // Settings
   loadSettings: () => Promise<void>;
-  updateSettingsAction: (settings: Record<string, string>) => Promise<void>;
+  updateSettingsAction: (settings: Record<string, string | number | boolean>) => Promise<void>;
+  resetSettingsAction: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | undefined>(undefined);
@@ -136,88 +101,72 @@ const AppContext = createContext<AppContextValue | undefined>(undefined);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
-  const loadProjects = useCallback(async () => {
+  // 加载任务列表
+  const loadTasks = useCallback(async () => {
     try {
       dispatch({ type: 'SET_LOADING', payload: true });
-      const projects = await projectService.getProjects();
-      dispatch({ type: 'SET_PROJECTS', payload: projects });
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : '加载项目失败' });
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
-
-  const createProjectAction = useCallback(async (
-    name: string,
-    description?: string,
-    settings?: Record<string, any>
-  ): Promise<Project> => {
-    const project = await projectService.createProject(name, description, settings);
-    dispatch({ type: 'ADD_PROJECT', payload: project });
-    return project;
-  }, []);
-
-  const updateProjectAction = useCallback(async (
-    id: number,
-    data: Partial<Project>
-  ): Promise<void> => {
-    const project = await projectService.updateProject(id, data);
-    dispatch({ type: 'UPDATE_PROJECT', payload: project });
-  }, []);
-
-  const deleteProjectAction = useCallback(async (id: number): Promise<void> => {
-    await projectService.deleteProject(id);
-    dispatch({ type: 'DELETE_PROJECT', payload: id });
-  }, []);
-
-  const loadProjectTasks = useCallback(async (projectId: number, options: GetProjectTasksOptions = {}) => {
-    try {
-      const tasks = await projectService.getProjectTasks(projectId, options);
+      const tasks = await taskService.getTasks();
       dispatch({ type: 'SET_TASKS', payload: tasks });
     } catch (error) {
       dispatch({
         type: 'SET_ERROR',
         payload: error instanceof Error ? error.message : '加载任务失败',
       });
+    } finally {
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, []);
 
-  const selectProject = useCallback((project: Project | null) => {
-    dispatch({ type: 'SET_CURRENT_PROJECT', payload: project });
-    if (project) {
-      void loadProjectTasks(project.id);
-    } else {
-      dispatch({ type: 'SET_TASKS', payload: [] });
-    }
-  }, [loadProjectTasks]);
+  // 初始化时加载任务和设置
+  useEffect(() => {
+    void loadTasks();
+  }, [loadTasks]);
 
+  // 创建任务
   const createTaskAction = useCallback(async (
-    projectId: number,
-    payload: CreateTaskPayload
+    prompt: string,
+    options: {
+      model?: string;
+      ratio?: string;
+      duration?: number;
+    } = {}
   ): Promise<Task> => {
-    const task = await taskService.createTask(projectId, payload);
+    const task = await taskService.createTask(prompt, options);
     dispatch({ type: 'ADD_TASK', payload: task });
     return task;
   }, []);
 
+  // 更新任务
   const updateTaskAction = useCallback(async (
     id: number,
     data: Partial<Task>
   ): Promise<void> => {
-    const task = await taskService.updateTask(id, data);
-    dispatch({ type: 'UPDATE_TASK', payload: task });
+    await taskService.updateTask(String(id), data);
+
+    // 重新加载任务列表以获取最新数据
+    const tasks = await taskService.getTasks();
+    dispatch({ type: 'SET_TASKS', payload: tasks });
   }, []);
 
+  // 删除任务
   const deleteTaskAction = useCallback(async (id: number): Promise<void> => {
-    await taskService.deleteTask(id);
+    await taskService.deleteTask(String(id));
     dispatch({ type: 'DELETE_TASK', payload: id });
   }, []);
 
+  // 选择任务
+  const selectTask = useCallback((task: Task | null) => {
+    dispatch({ type: 'SET_CURRENT_TASK', payload: task });
+  }, []);
+
+  // 清空所有任务
+  const clearAllTasks = useCallback(async (): Promise<void> => {
+    await taskService.clearAllTasks();
+    dispatch({ type: 'SET_TASKS', payload: [] });
+    dispatch({ type: 'SET_CURRENT_TASK', payload: null });
+  }, []);
+
+  // 加载设置
   const loadSettings = useCallback(async () => {
     try {
       const settings = await settingsService.getSettings();
@@ -227,44 +176,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // 初始化时加载设置
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
 
+  // 更新设置
   const updateSettingsAction = useCallback(async (
-    settings: Record<string, string>
+    settings: Record<string, string | number | boolean>
   ): Promise<void> => {
     const updated = await settingsService.updateSettings(settings);
     dispatch({ type: 'SET_SETTINGS', payload: updated });
   }, []);
 
+  // 重置设置
+  const resetSettingsAction = useCallback(async (): Promise<void> => {
+    await settingsService.resetSettings();
+    const settings = await settingsService.getSettings();
+    dispatch({ type: 'SET_SETTINGS', payload: settings });
+  }, []);
+
   const value = useMemo<AppContextValue>(() => ({
     state,
     dispatch,
-    loadProjects,
-    createProjectAction,
-    updateProjectAction,
-    deleteProjectAction,
-    selectProject,
-    loadProjectTasks,
+    loadTasks,
     createTaskAction,
     updateTaskAction,
     deleteTaskAction,
+    selectTask,
+    clearAllTasks,
     loadSettings,
     updateSettingsAction,
+    resetSettingsAction,
   }), [
     state,
-    loadProjects,
-    createProjectAction,
-    updateProjectAction,
-    deleteProjectAction,
-    selectProject,
-    loadProjectTasks,
+    loadTasks,
     createTaskAction,
     updateTaskAction,
     deleteTaskAction,
+    selectTask,
+    clearAllTasks,
     loadSettings,
     updateSettingsAction,
+    resetSettingsAction,
   ]);
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

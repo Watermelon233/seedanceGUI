@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ApiKeyPage from './pages/ApiKeyPage';
 import SingleTaskPage from './pages/SingleTaskPage';
+import SettingsPage from './pages/Settings';
+import ApiTestPage from './pages/ApiTestPage';
+import ReferenceImagePage from './pages/ReferenceImagePage';
 import { hasApiKey } from './services/localStorageService';
 
 // 简单的导航菜单
@@ -61,6 +64,36 @@ function NavigationMenu() {
           }}
         >
           API配置
+        </a>
+        <a
+          href="/settings"
+          style={{
+            color: location.pathname === '/settings' ? '#a855f7' : '#9ca3af',
+            textDecoration: 'none',
+            fontWeight: location.pathname === '/settings' ? '500' : '400'
+          }}
+        >
+          设置
+        </a>
+        <a
+          href="/api-test"
+          style={{
+            color: location.pathname === '/api-test' ? '#a855f7' : '#9ca3af',
+            textDecoration: 'none',
+            fontWeight: location.pathname === '/api-test' ? '500' : '400'
+          }}
+        >
+          API测试
+        </a>
+        <a
+          href="/reference"
+          style={{
+            color: location.pathname === '/reference' ? '#a855f7' : '#9ca3af',
+            textDecoration: 'none',
+            fontWeight: location.pathname === '/reference' ? '500' : '400'
+          }}
+        >
+          参考图模式
         </a>
       </div>
     </nav>
@@ -303,6 +336,20 @@ function AppContent() {
 
       {/* API配置页面 - 二级页面 */}
       <Route path="/config" element={<ApiKeyPage />} />
+
+      {/* 设置页面 */}
+      <Route path="/settings" element={<SettingsPage />} />
+
+      {/* API测试页面 */}
+      <Route path="/api-test" element={<ApiTestPage />} />
+
+      {/* 参考图模式页面 - 需要API Key */}
+      <Route
+        path="/reference"
+        element={
+          hasApiKey() ? <ReferenceImagePage /> : <Navigate to="/config" replace />
+        }
+      />
 
       {/* 其他路由重定向到主页 */}
       <Route path="*" element={<Navigate to="/" replace />} />
