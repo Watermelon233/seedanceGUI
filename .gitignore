@@ -1,2 +1,43 @@
+# 环境变量
 .env
-node_modules
+
+# 依赖
+node_modules/
+
+# 数据文件
+data/
+*.db
+*.db-*
+server/data/
+
+# 日志
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 构建产物
+dist/
+build/
+*.local
+
+# 临时文件
+*.tmp
+*.temp
+REFACTOR_PROGRESS.md
+simplified-App.tsx
+
+# 备份文件
+*.backup.*
+*~
