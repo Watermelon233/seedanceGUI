@@ -123,10 +123,17 @@ export default function ApiTestPage() {
       const config = getModeConfig(selectedMode);
       const content: any[] = [];
 
+      // 转换@图标记为[图]标记（参考图模式专用）
+      let processedPrompt = testParams.prompt.trim();
+      if (selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE && imageFiles.length > 0) {
+        // 将 @图1 @图2 转换为 [图1] [图2]
+        processedPrompt = processedPrompt.replace(/@图(\d+)/g, '[图$1]');
+      }
+
       // 添加文本提示词
       content.push({
         type: 'text',
-        text: testParams.prompt.trim()
+        text: processedPrompt
       });
 
       // 添加图片（修正role逻辑）
@@ -441,15 +448,140 @@ export default function ApiTestPage() {
                       }}
                     />
                     {imageFiles.length > 0 && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#9ca3af' }}>
-                        已选择 {imageFiles.length} 张图片
-                        {imageFiles.length > 0 && getModeConfig(selectedMode).useRole && (
-                          <span style={{ marginLeft: '0.5rem', color: '#a855f7' }}>
-                            ({imageFiles.length === 2 && getModeConfig(selectedMode).roleType === 'first_last'
-                              ? '第1张=首帧, 第2张=尾帧'
-                              : '所有图片=参考图'})
-                          </span>
-                        )}
+                      <div style={{ marginTop: '1rem' }}>
+                        {/* 图片预览列表 */}
+                        <div style={{ display: 'grid', gap: '0.75rem' }}>
+                          {imageFiles.map((file, index) => {
+                            const config = getModeConfig(selectedMode);
+                            const role = config.useRole ? getImageRole(selectedMode, index) : null;
+                            const fileSize = (file.size / 1024).toFixed(0);
+
+                            return (
+                              <div
+                                key={index}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.75rem',
+                                  padding: '0.75rem',
+                                  backgroundColor: '#0f111a',
+                                  border: '1px solid #374151',
+                                  borderRadius: '0.5rem',
+                                  fontSize: '0.875rem'
+                                }}
+                              >
+                                {/* 序号 */}
+                                <div style={{
+                                  minWidth: '2.5rem',
+                                  height: '2.5rem',
+                                  borderRadius: '0.375rem',
+                                  background: 'linear-gradient(135deg, #a855f7, #ec4899)',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '0.75rem',
+                                  fontWeight: 'bold',
+                                  color: 'white'
+                                }}>
+                                  图{index + 1}
+                                </div>
+
+                                {/* 缩略图 */}
+                                <div style={{
+                                  width: '3rem',
+                                  height: '3rem',
+                                  borderRadius: '0.375rem',
+                                  overflow: 'hidden',
+                                  backgroundColor: '#1a1d2d',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center'
+                                }}>
+                                  <img
+                                    src={URL.createObjectURL(file)}
+                                    alt={`图${index + 1}`}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                </div>
+
+                                {/* 文件信息 */}
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: '500', color: '#e5e7eb', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {file.name}
+                                  </div>
+                                  <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                                    {fileSize} KB
+                                  </div>
+                                </div>
+
+                                {/* Role标签 */}
+                                {role && (
+                                  <div style={{
+                                    padding: '0.25rem 0.75rem',
+                                    borderRadius: '0.375rem',
+                                    fontSize: '0.75rem',
+                                    fontWeight: '500',
+                                    backgroundColor: role === 'first_frame' ? 'rgba(34, 197, 94, 0.1)' :
+                                                      role === 'last_frame' ? 'rgba(239, 68, 68, 0.1)' :
+                                                      'rgba(168, 85, 247, 0.1)',
+                                    color: role === 'first_frame' ? '#22c55e' :
+                                           role === 'last_frame' ? '#ef4444' :
+                                           '#a855f7',
+                                    border: `1px solid ${
+                                      role === 'first_frame' ? 'rgba(34, 197, 94, 0.3)' :
+                                      role === 'last_frame' ? 'rgba(239, 68, 68, 0.3)' :
+                                      'rgba(168, 85, 247, 0.3)'
+                                    }`
+                                  }}>
+                                    {role === 'first_frame' ? '🎬 首帧' :
+                                     role === 'last_frame' ? '🎬 尾帧' :
+                                     `🎨 图${index + 1}`}
+                                  </div>
+                                )}
+
+                                {/* 删除按钮 */}
+                                <button
+                                  onClick={() => {
+                                    const newFiles = imageFiles.filter((_, i) => i !== index);
+                                    setImageFiles(newFiles);
+                                  }}
+                                  style={{
+                                    padding: '0.375rem 0.75rem',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                                    color: '#ef4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    borderRadius: '0.375rem',
+                                    fontSize: '0.75rem',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.2s'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                  }}
+                                >
+                                  删除
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* 提示信息 */}
+                        <div style={{ marginTop: '0.75rem', fontSize: '0.75rem', color: '#9ca3af' }}>
+                          {selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_REFERENCE && (
+                            <span style={{ color: '#a855f7' }}>
+                              💡 提示：在提示词中使用 @图1 @图2 @图3 引用图片，系统会自动转换为 [图1] [图2] [图3]
+                            </span>
+                          )}
+                          {selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_LAST && (
+                            <span style={{ color: '#22c55e' }}>
+                              💡 提示：第1张图片为起始帧，第2张图片为结束帧
+                            </span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </>
@@ -492,7 +624,7 @@ export default function ApiTestPage() {
                 ? '描述视频动作，例如：女孩抱着狐狸，女孩睁开眼...'
                 : selectedMode === VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_LAST
                 ? '描述运镜方式，例如：360度环绕运镜'
-                : '描述场景，可以使用[图1]、[图2]引用图片...'
+                : '描述场景，使用 @图1 @图2 @图3 引用图片，例如：@图1戴着眼镜的男生和@图2的柯基...'
             }
             rows={4}
             style={{
