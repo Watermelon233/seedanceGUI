@@ -26,7 +26,7 @@ export function getApiConfig(): ApiConfig {
       const config = JSON.parse(stored);
       // 确保aihubmixEndpoint字段存在
       if (!config.aihubmixEndpoint) {
-        config.aihubmixEndpoint = 'https://api.aihubmix.com';
+        config.aihubmixEndpoint = 'https://aihubmix.com';
       }
       return config;
     }
@@ -34,12 +34,12 @@ export function getApiConfig(): ApiConfig {
     console.error('读取API配置失败:', error);
   }
 
-  // 返回默认配置（包含测试API Key）
+  // 返回默认配置
   return {
-    volcengineKey: 'sk-test-volcengine-default-key-for-demo',
+    volcengineKey: null,
     aihubmixKey: null,
-    aihubmixEndpoint: 'https://api.aihubmix.com',
-    defaultProvider: 'volcengine'
+    aihubmixEndpoint: 'https://aihubmix.com',
+    defaultProvider: 'aihubmix'
   };
 }
 
@@ -80,7 +80,7 @@ export function hasApiKey(): boolean {
  */
 export function getAihubmixEndpoint(): string {
   const config = getApiConfig();
-  return config.aihubmixEndpoint || 'https://api.aihubmix.com';
+  return config.aihubmixEndpoint || 'https://aihubmix.com';
 }
 
 /**

@@ -326,11 +326,13 @@ function AppContent() {
       {/* 主页 - 不需要API Key */}
       <Route path="/" element={<HomePage />} />
 
-      {/* 视频生成页面 - 需要API Key */}
+      {/* 视频生成页面 - Mock模式不需要API Key */}
       <Route
         path="/generate"
         element={
-          hasApiKey() ? <SingleTaskPage /> : <Navigate to="/config" replace />
+          (import.meta.env.VITE_MOCK_API === 'true' || import.meta.env.VITE_MOCK_API === true || hasApiKey())
+            ? <SingleTaskPage />
+            : <Navigate to="/config" replace />
         }
       />
 

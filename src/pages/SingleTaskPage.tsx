@@ -23,6 +23,7 @@ import { generateVideo } from '../services/videoService';
 import VideoPlayer from '../components/VideoPlayer';
 import { GearIcon, PlusIcon, CloseIcon, SparkleIcon } from '../components/Icons';
 import { useNavigate } from 'react-router-dom';
+import { MockDevTools } from '../components/MockDevTools';
 
 let nextId = 0;
 
@@ -40,6 +41,12 @@ export default function SingleTaskPage() {
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+
+  // Mock 模式检测
+  const mockEnv = import.meta.env.VITE_MOCK_API;
+  const isMockMode = mockEnv === 'true' || mockEnv === true;
+  // 调试日志
+  console.log('[SingleTaskPage] VITE_MOCK_API:', mockEnv, 'isMockMode:', isMockMode);
 
   const addFiles = useCallback(
     (fileList: FileList | null) => {
@@ -162,10 +169,21 @@ export default function SingleTaskPage() {
       : undefined;
 
   const isGenerating = generation.status === 'generating';
-  const canGenerate = (prompt.trim() || images.length > 0) && !isGenerating;
+  const canGenerate = (prompt.trim() || mediaFiles.length > 0) && !isGenerating;
 
   return (
     <div className="h-screen flex flex-col md:flex-row overflow-hidden bg-[#0f111a] text-white">
+      {/* Mock 模式提示横幅 */}
+      {isMockMode && (
+        <div className="fixed top-0 left-0 right-0 z-[2000] bg-yellow-500 text-black px-4 py-2 text-center text-sm font-medium flex items-center justify-center gap-2 shadow-lg">
+          <span>🧪</span>
+          <span>测试模式 - 当前使用 Mock API，不会调用真实接口</span>
+        </div>
+      )}
+
+      {/* Mock DevTools */}
+      <MockDevTools />
+
       {/* Mobile Header */}
       <div className="md:hidden sticky top-0 z-40 bg-[#0f111a]/95 backdrop-blur-sm px-4 py-3 flex items-center justify-between border-b border-gray-800">
         <h1 className="text-lg font-bold">{MODEL_OPTIONS.find(m => m.value === model)?.label || 'Seedance 2.0'}</h1>
@@ -269,7 +287,7 @@ export default function SingleTaskPage() {
             {/* Upload zone - 智能提示 */}
             {getModeConfig(selectedMode).maxImages > 0 ? (
               <>
-                {images.length < getModeConfig(selectedMode).maxImages && (
+                {mediaFiles.length < getModeConfig(selectedMode).maxImages && (
                   <div
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
@@ -278,7 +296,7 @@ export default function SingleTaskPage() {
                       addFiles(e.dataTransfer.files);
                     }}
                     className={`w-full ${
-                      images.length === 0 ? 'h-40 md:h-52' : 'h-24'
+                      mediaFiles.length === 0 ? 'h-40 md:h-52' : 'h-24'
                     } border border-dashed border-gray-700 rounded-2xl flex flex-col items-center justify-center bg-[#1c1f2e] cursor-pointer hover:border-purple-500/50 hover:bg-[#25293d] transition-all`}
                   >
                     <div className="flex flex-col items-center gap-2">
