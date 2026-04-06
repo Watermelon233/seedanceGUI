@@ -114,7 +114,7 @@ export default function ApiKeyPage() {
     return true;
   }, [volcengineKey]);
 
-  // 检测 Aihubmix 连通性
+  // 检测 Aihubmix 连通性（使用 Chat Completions 接口）
   const checkAihubmixConnection = useCallback(async () => {
     if (!aihubmixKey.trim()) {
       setErrors({ aihubmix: '请先输入API Key' });
@@ -130,31 +130,37 @@ export default function ApiKeyPage() {
     setErrors({});
 
     try {
-      // 使用官方文档的端点检测连通性
-      const response = await fetch(`${aihubmixEndpoint.trim()}/v1/videos`, {
+      // 使用 Chat Completions 接口快速检测连通性
+      const response = await fetch(`${aihubmixEndpoint.trim()}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${aihubmixKey.trim()}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'wan2.6-t2v',
-          prompt: 'test',
-          seconds: '5',
-          size: '16:9'
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'user',
+              content: 'What is the meaning of life?'
+            }
+          ]
         }),
       });
 
-      if (response.ok || response.status === 400 || response.status === 401 || response.status === 422) {
-        // 200/400/401/422 都说明连通性正常（400/401/422表示参数或认证问题但服务可达）
+      if (response.ok) {
         setConnectionStatus(prev => ({ ...prev, aihubmix: 'success' }));
-        if (response.status === 401) {
-          setErrors({ aihubmix: 'API Key 无效或已过期' });
-        }
-        return response.status === 200;
+        return true;
+      } else if (response.status === 401) {
+        setErrors({ aihubmix: 'API Key 无效或已过期' });
+        setConnectionStatus(prev => ({ ...prev, aihubmix: 'error' }));
+        return false;
       } else {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || errorData.message || `HTTP ${response.status}`);
+        const errorMsg = errorData.error?.message || errorData.message || `HTTP ${response.status}`;
+        setErrors({ aihubmix: `连接失败: ${errorMsg}` });
+        setConnectionStatus(prev => ({ ...prev, aihubmix: 'error' }));
+        return false;
       }
     } catch (error) {
       console.error('Aihubmix 连通性检测失败:', error);
