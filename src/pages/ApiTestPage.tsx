@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   VideoGenerationMode,
@@ -7,13 +7,19 @@ import {
   validateImageCount,
   getImageRole
 } from '../types';
+import { getApiConfig } from '../services/localStorageService';
+
+type ApiProvider = 'volcengine' | 'aihubmix';
 
 export default function ApiTestPage() {
   const navigate = useNavigate();
 
+  // 供应商选择
+  const [selectedProvider, setSelectedProvider] = useState<ApiProvider>('aihubmix');
+
   // 测试参数状态
   const [testParams, setTestParams] = useState({
-    model: 'seedance-2.0',
+    model: 'doubao-seedance-2-0-260128',
     prompt: '一只可爱的小猫在草地上玩耍',
     ratio: '16:9',
     duration: 5,
@@ -25,15 +31,32 @@ export default function ApiTestPage() {
 
   // 新的模式选择状态
   const [selectedMode, setSelectedMode] = useState<VideoGenerationMode>(
-    VideoGenerationMode.IMAGE_TO_VIDEO_FIRST_FRAME
+    VideoGenerationMode.TEXT_TO_VIDEO
   );
 
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [generatedRequestBody, setGeneratedRequestBody] = useState<any>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; response?: any } | null>(null);
+  const [testing, setTesting] = useState(false);
 
-  // 模型选项
-  const modelOptions = [
+  // 加载配置
+  useEffect(() => {
+    const config = getApiConfig();
+    if (config.defaultProvider) {
+      setSelectedProvider(config.defaultProvider);
+    }
+    // 根据供应商设置默认模型
+    if (config.defaultProvider === 'aihubmix') {
+      setTestParams(prev => ({ ...prev, model: 'doubao-seedance-2-0-260128' }));
+    }
+  }, []);
+
+  // 模型选项（根据供应商变化）
+  const modelOptions = selectedProvider === 'aihubmix' ? [
+    { value: 'doubao-seedance-2-0-260128', label: 'Seedance 2.0 (全能模型)' },
+    { value: 'doubao-seedance-2-0-fast-260128', label: 'Seedance 2.0 Fast (快速模型)' },
+  ] : [
     { value: 'seedance-2.0', label: 'Seedance 2.0 (全能)' },
     { value: 'seedance-2.0-vip', label: 'Seedance 2.0 VIP (720p)' },
     { value: 'seedance-2.0-fast', label: 'Seedance 2.0 Fast (快速)' },
@@ -51,12 +74,16 @@ export default function ApiTestPage() {
     { value: '3:4', label: '3:4 (竖版标准)' },
   ];
 
-  // 模型ID映射
-  const MODEL_ID_MAPPING: Record<string, string> = {
-    'seedance-2.0': 'doubao-seedance-2-0-260128',
-    'seedance-2.0-vip': 'doubao-seedance-2-0-260128',
-    'seedance-2.0-fast': 'doubao-seedance-2-0-fast-260128',
-    'seedance-2.0-fast-vip': 'doubao-seedance-2-0-fast-260128',
+  // 获取API端点
+  const getApiEndpoint = () => {
+    const config = getApiConfig();
+    const endpoint = selectedProvider === 'aihubmix'
+      ? (config.aihubmixEndpoint || 'https://aihubmix.com')
+      : 'https://ark.cn-beijing.volces.com';
+
+    return selectedProvider === 'aihubmix'
+      ? `${endpoint}/v1/videos`
+      : `${endpoint}/api/v3/contents/generations/tasks`;
   };
 
   // 模式切换处理函数
@@ -70,9 +97,6 @@ export default function ApiTestPage() {
       ...prev,
       ratio: config.defaultRatio
     }));
-
-    // 智能处理图片（用户选择：保留图片，标记为无效）
-    // 只在用户主动上传超过限制时才提示删除，切换模式时保留图片
 
     // 清空验证错误和请求体
     setValidationErrors([]);
@@ -110,7 +134,7 @@ export default function ApiTestPage() {
     });
   };
 
-  // 构建请求体（修正Role逻辑）
+  // 构建请求体
   const buildRequestBody = async () => {
     const errors = validateParams();
     setValidationErrors(errors);
@@ -136,7 +160,7 @@ export default function ApiTestPage() {
         text: processedPrompt
       });
 
-      // 添加图片（修正role逻辑）
+      // 添加图片
       if (imageFiles.length > 0) {
         for (let i = 0; i < imageFiles.length; i++) {
           const file = imageFiles[i];
@@ -149,7 +173,7 @@ export default function ApiTestPage() {
             }
           };
 
-          // ⚠️ 关键修正：根据配置决定是否添加role
+          // 根据配置决定是否添加role
           if (config.useRole) {
             const role = getImageRole(selectedMode, i);
             if (role) {
@@ -161,15 +185,16 @@ export default function ApiTestPage() {
         }
       }
 
-      // 确定分辨率
+      let requestBody: any;
+
+      // 统一使用火山引擎格式的参数
       let resolution = testParams.resolution;
       if (testParams.model.includes('vip')) {
         resolution = '720p';
       }
 
-      // 构建完整请求体
-      const requestBody = {
-        model: MODEL_ID_MAPPING[testParams.model],
+      requestBody = {
+        model: testParams.model,
         content: content,
         resolution: resolution,
         ratio: testParams.ratio,
@@ -210,6 +235,90 @@ export default function ApiTestPage() {
     }
   };
 
+  // 获取供应商描述
+  const getProviderDescription = () => {
+    return selectedProvider === 'aihubmix'
+      ? 'Aihubmix 聚合API - 支持多厂商模型，兼容 OpenAI Sora 格式'
+      : '火山方舟官方API - 字节跳动视频生成服务';
+  };
+
+  // 测试 API 连接（使用 Chat Completions 接口）
+  const testApiConnection = async () => {
+    setTesting(true);
+    setTestResult(null);
+
+    try {
+      const config = getApiConfig();
+      const apiKey = selectedProvider === 'aihubmix' ? config.aihubmixKey : config.volcengineKey;
+
+      if (!apiKey) {
+        setTestResult({
+          success: false,
+          message: '❌ 未配置 API Key，请先在设置页配置'
+        });
+        setTesting(false);
+        return;
+      }
+
+      // 使用 Chat Completions 接口测试连接
+      const endpoint = selectedProvider === 'aihubmix'
+        ? 'https://aihubmix.com/v1/chat/completions'
+        : 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+
+      const requestBody = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: 'What is the meaning of life?'
+          }
+        ]
+      };
+
+      console.log('🧪 [API测试] 发起请求...');
+      console.log('端点:', endpoint);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
+
+      console.log('🧪 [API测试] 响应:', response.status, data);
+
+      if (response.ok && data.choices) {
+        setTestResult({
+          success: true,
+          message: '✅ API 连接成功！',
+          response: {
+            model: data.model,
+            usage: data.usage,
+            reply: data.choices[0]?.message?.content || 'N/A'
+          }
+        });
+      } else {
+        setTestResult({
+          success: false,
+          message: `❌ API 请求失败: ${data.error?.message || response.statusText}`,
+          response: data
+        });
+      }
+    } catch (error) {
+      console.error('🧪 [API测试] 错误:', error);
+      setTestResult({
+        success: false,
+        message: `❌ 网络错误: ${error instanceof Error ? error.message : '未知错误'}`
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -233,6 +342,106 @@ export default function ApiTestPage() {
           <p style={{ color: '#9ca3af' }}>
             根据官方文档验证视频生成请求体构建
           </p>
+        </div>
+
+        {/* 供应商选择 */}
+        <div style={{
+          backgroundColor: '#1a1d2d',
+          borderRadius: '1rem',
+          padding: '1.5rem',
+          border: '1px solid #374151',
+          marginBottom: '2rem'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+            <div>
+              <h3 style={{ fontSize: '1.125rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                🔌 API 供应商
+              </h3>
+              <p style={{ fontSize: '0.875rem', color: '#9ca3af' }}>
+                {getProviderDescription()}
+              </p>
+            </div>
+            <select
+              value={selectedProvider}
+              onChange={(e) => {
+                const newProvider = e.target.value as ApiProvider;
+                setSelectedProvider(newProvider);
+                // 更新默认模型
+                if (newProvider === 'aihubmix') {
+                  setTestParams(prev => ({ ...prev, model: 'doubao-seedance-2-0-260128' }));
+                } else {
+                  setTestParams(prev => ({ ...prev, model: 'seedance-2.0' }));
+                }
+                // 清空已生成的请求体
+                setGeneratedRequestBody(null);
+                setValidationErrors([]);
+              }}
+              style={{
+                padding: '0.75rem 1.5rem',
+                backgroundColor: '#0f111a',
+                border: '1px solid #374151',
+                borderRadius: '0.5rem',
+                color: '#e5e7eb',
+                fontSize: '0.875rem',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="aihubmix">Aihubmix (聚合API)</option>
+              <option value="volcengine">火山方舟 (官方API)</option>
+            </select>
+          </div>
+
+          {/* API 连接测试 */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <button
+              onClick={testApiConnection}
+              disabled={testing}
+              style={{
+                padding: '0.75rem 1.5rem',
+                background: testing ? '#374151' : 'linear-gradient(to right, #22c55e, #16a34a)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                cursor: testing ? 'not-allowed' : 'pointer',
+                opacity: testing ? 0.7 : 1
+              }}
+            >
+              {testing ? '🔄 测试中...' : '🧪 测试 API 连接'}
+            </button>
+            <span style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+              使用 Chat Completions 快速验证 API Key
+            </span>
+          </div>
+
+          {/* 测试结果 */}
+          {testResult && (
+            <div style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              borderRadius: '0.5rem',
+              backgroundColor: testResult.success ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+              border: `1px solid ${testResult.success ? 'rgba(34, 197, 94, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+            }}>
+              <div style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+                {testResult.message}
+              </div>
+              {testResult.response && (
+                <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                  <div>模型: {testResult.response.model}</div>
+                  {testResult.response.usage && (
+                    <div>Token: {testResult.response.usage.total_tokens || 'N/A'}</div>
+                  )}
+                  {testResult.response.reply && (
+                    <div style={{ marginTop: '0.5rem', color: '#e5e7eb' }}>
+                      回复: {testResult.response.reply}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 参数配置区域 */}
@@ -281,7 +490,7 @@ export default function ApiTestPage() {
               {/* 宽高比 */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
-                  宽高比
+                  宽高比 (ratio)
                 </label>
                 <select
                   value={testParams.ratio}
@@ -305,7 +514,7 @@ export default function ApiTestPage() {
               {/* 视频时长 */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
-                  视频时长 (秒)
+                  视频时长 (duration)
                 </label>
                 <input
                   type="number"
@@ -325,29 +534,31 @@ export default function ApiTestPage() {
                 />
               </div>
 
-              {/* 分辨率 */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
-                  分辨率
-                </label>
-                <select
-                  value={testParams.resolution}
-                  onChange={(e) => setTestParams({ ...testParams, resolution: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    backgroundColor: '#0f111a',
-                    border: '1px solid #374151',
-                    borderRadius: '0.5rem',
-                    color: '#e5e7eb',
-                    fontSize: '0.875rem'
-                  }}
-                >
-                  <option value="480p">480p</option>
-                  <option value="720p">720p (推荐)</option>
-                  <option value="1080p">1080p</option>
-                </select>
-              </div>
+              {/* 分辨率 - 仅火山方舟 */}
+              {selectedProvider === 'volcengine' && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
+                    分辨率 (resolution)
+                  </label>
+                  <select
+                    value={testParams.resolution}
+                    onChange={(e) => setTestParams({ ...testParams, resolution: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      backgroundColor: '#0f111a',
+                      border: '1px solid #374151',
+                      borderRadius: '0.5rem',
+                      color: '#e5e7eb',
+                      fontSize: '0.875rem'
+                    }}
+                  >
+                    <option value="480p">480p</option>
+                    <option value="720p">720p (推荐)</option>
+                    <option value="1080p">1080p</option>
+                  </select>
+                </div>
+              )}
             </div>
           </div>
 
@@ -363,7 +574,7 @@ export default function ApiTestPage() {
             </h3>
 
             <div style={{ display: 'grid', gap: '1rem' }}>
-              {/* 模式选择器 - 新的4种模式 */}
+              {/* 模式选择器 - 4种模式 */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
                   🎬 生成模式
@@ -398,7 +609,7 @@ export default function ApiTestPage() {
               {/* 生成音频 */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>生成音频</div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>生成音频 (generate_audio)</div>
                   <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>是否生成同步音频</div>
                 </div>
                 <input
@@ -412,7 +623,7 @@ export default function ApiTestPage() {
               {/* 水印 */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
-                  <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>添加水印</div>
+                  <div style={{ fontSize: '0.875rem', fontWeight: '500' }}>添加水印 (watermark)</div>
                   <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>是否在视频中添加水印</div>
                 </div>
                 <input
@@ -529,8 +740,8 @@ export default function ApiTestPage() {
                                            '#a855f7',
                                     border: `1px solid ${
                                       role === 'first_frame' ? 'rgba(34, 197, 94, 0.3)' :
-                                      role === 'last_frame' ? 'rgba(239, 68, 68, 0.3)' :
-                                      'rgba(168, 85, 247, 0.3)'
+                                        role === 'last_frame' ? 'rgba(239, 68, 68, 0.3)' :
+                                        'rgba(168, 85, 247, 0.3)'
                                     }`
                                   }}>
                                     {role === 'first_frame' ? '🎬 首帧' :
@@ -612,7 +823,7 @@ export default function ApiTestPage() {
           marginBottom: '2rem'
         }}>
           <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
-            📄 提示词
+            📄 提示词 (prompt)
           </label>
           <textarea
             value={testParams.prompt}
@@ -659,7 +870,7 @@ export default function ApiTestPage() {
             🔨 生成请求体
           </button>
           <button
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/generate')}
             style={{
               padding: '0.75rem 2rem',
               backgroundColor: '#1a1d2d',
@@ -736,16 +947,18 @@ export default function ApiTestPage() {
                 📋 请求体说明
               </h4>
               <ul style={{ fontSize: '0.875rem', color: '#9ca3af', paddingLeft: '1.5rem' }}>
+                <li><strong>供应商</strong>: {selectedProvider === 'aihubmix' ? 'Aihubmix (聚合API)' : '火山方舟 (官方API)'}</li>
                 <li><strong>模式</strong>: {MODE_OPTIONS.find(m => m.value === selectedMode)?.label}</li>
-                <li><strong>model</strong>: {generatedRequestBody.model} (模型ID)</li>
+                <li><strong>model</strong>: {generatedRequestBody.model}</li>
                 <li><strong>content</strong>: 包含 {generatedRequestBody.content.length} 个元素（文本+图片）</li>
                 <li><strong>图片role</strong>: {getModeConfig(selectedMode).useRole ? '已设置' : '未设置（正确）'}</li>
-                <li><strong>resolution</strong>: {generatedRequestBody.resolution} (视频分辨率)</li>
-                <li><strong>ratio</strong>: {generatedRequestBody.ratio} (宽高比)</li>
-                <li><strong>duration</strong>: {generatedRequestBody.duration}秒 (视频时长)</li>
-                <li><strong>generate_audio</strong>: {generatedRequestBody.generate_audio ? '是' : '否'} (生成音频)</li>
-                <li><strong>seed</strong>: {generatedRequestBody.seed} (随机种子)</li>
-                <li><strong>watermark</strong>: {generatedRequestBody.watermark ? '是' : '否'} (水印)</li>
+                <li><strong>resolution</strong>: {generatedRequestBody.resolution}</li>
+                <li><strong>ratio</strong>: {generatedRequestBody.ratio}</li>
+                <li><strong>duration</strong>: {generatedRequestBody.duration}秒</li>
+                <li><strong>generate_audio</strong>: {generatedRequestBody.generate_audio ? '是' : '否'}</li>
+                <li><strong>seed</strong>: {generatedRequestBody.seed}</li>
+                <li><strong>watermark</strong>: {generatedRequestBody.watermark ? '是' : '否'}</li>
+                <li><strong>camera_fixed</strong>: {generatedRequestBody.camera_fixed ? '是' : '否'}</li>
               </ul>
             </div>
 
@@ -755,7 +968,10 @@ export default function ApiTestPage() {
                 🚀 API端点
               </div>
               <div style={{ fontSize: '0.875rem', fontFamily: 'monospace', color: '#a855f7' }}>
-                POST https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks
+                POST {getApiEndpoint()}
+              </div>
+              <div style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: '#9ca3af' }}>
+                认证方式: Authorization: Bearer &lt;API_KEY&gt;
               </div>
             </div>
           </div>
