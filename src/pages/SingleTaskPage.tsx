@@ -161,9 +161,15 @@ export default function SingleTaskPage() {
         }
       );
 
+      console.log('[SingleTaskPage] generateVideo 返回结果:', result);
+      console.log('[SingleTaskPage] result.data:', result.data);
+      console.log('[SingleTaskPage] result.data[0]?.url:', result.data?.[0]?.url);
+
       if (result.data && result.data.length > 0 && result.data[0].url) {
+        console.log('[SingleTaskPage] 设置成功状态，videoUrl:', result.data[0].url);
         setGeneration({ status: 'success', result });
       } else {
+        console.log('[SingleTaskPage] 未获取到视频URL，设置错误状态');
         setGeneration({
           status: 'error',
           error: '未获取到视频结果，请重试',
