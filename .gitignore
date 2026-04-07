@@ -46,7 +46,7 @@ proxy-server.js  # 旧版本代理服务器，已被 proxy-server.cjs 替代
 # Codex 审查输出
 codex_review_*.md
 codex_review_prompt.txt
-codex调用指南.md
+
 
 # 临时计划文件
 plan_*.md
