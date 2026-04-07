@@ -10,7 +10,8 @@ const PORT = 3002;
 const TIMEOUT = 10 * 60 * 1000; // 10分钟超时，支持大文件上传
 
 const server = http.createServer(async (req, res) => {
-  // 处理 CORS
+  // 处理 CORS - 添加 Content-Disposition 到可暴露头部 (v8 修复)
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Type, Content-Length');
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -151,12 +152,14 @@ const server = http.createServer(async (req, res) => {
       console.log('[代理] 视频下载响应状态:', proxyRes.statusCode);
       console.log('[代理] Content-Type:', proxyRes.headers['content-type']);
 
-      // 设置 CORS 和视频流响应头
+      // 设置 CORS 和视频流响应头 (v8 修复: 添加 Content-Disposition 暴露)
       const headers = {
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Disposition, Content-Type, Content-Length',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Content-Type': proxyRes.headers['content-type'] || 'video/mp4',
-        'Content-Length': proxyRes.headers['content-length']
+        'Content-Length': proxyRes.headers['content-length'],
+        'Content-Disposition': proxyRes.headers['content-disposition']
       };
 
       res.writeHead(proxyRes.statusCode, headers);

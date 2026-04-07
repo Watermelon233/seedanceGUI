@@ -5,6 +5,7 @@
 
 import { BaseVideoProvider, VideoGenerationRequest, VideoGenerationResponse, TaskStatus } from '../videoProvider';
 import { getApiConfig } from '../localStorageService';
+import { isAbortError } from './utils';
 
 // ============================================================
 // 模型配置映射
@@ -170,11 +171,18 @@ export class VolcengineProvider extends BaseVideoProvider {
 
   /**
    * 查询任务状态
+   * @param taskId - 任务ID
+   * @param signal - 可选的 AbortSignal，用于取消请求
    */
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
+  async getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatus> {
     try {
       // 1. 前置检查 - 验证API Key
       this.validateApiKey();
+
+      // v6/v7/v8: 检查 signal 是否已中止
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
 
       // 2. URL构建
       const apiUrl = `${this.endpoint}/api/v3/contents/generations/tasks/${taskId}`;
@@ -191,12 +199,13 @@ export class VolcengineProvider extends BaseVideoProvider {
       console.log('════════════════════════════════════════════════════════════════');
       console.log('');
 
-      // 3. API调用 - GET请求
+      // 3. API调用 - GET请求，传递 signal
       const response = await this.fetchWithProxy(apiUrl, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
         },
+        signal, // v6/v7/v8: 传递 signal 给 fetch
       });
 
       if (!response.ok) {
@@ -247,6 +256,10 @@ export class VolcengineProvider extends BaseVideoProvider {
         error: data.error_message || data.message || data.error
       };
     } catch (error) {
+      // v7/v8: 使用统一的 isAbortError 识别
+      if (isAbortError(error)) {
+        throw error; // 重新抛出 AbortError，让调用方处理
+      }
       throw new Error(error instanceof Error ? error.message : '查询任务状态失败');
     }
   }

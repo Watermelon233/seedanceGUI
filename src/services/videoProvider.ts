@@ -70,9 +70,10 @@ export interface VideoProvider {
   /**
    * 查询任务状态
    * @param taskId 任务ID
+   * @param signal 可选的 AbortSignal，用于取消请求
    * @returns 任务状态信息
    */
-  getTaskStatus(taskId: string): Promise<TaskStatus>;
+  getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatus>;
 
   /**
    * 测试API连接（可选）
@@ -280,5 +281,5 @@ export abstract class BaseVideoProvider implements VideoProvider {
 
   // 抽象方法，子类必须实现
   abstract createGenerationTask(request: VideoGenerationRequest): Promise<VideoGenerationResponse>;
-  abstract getTaskStatus(taskId: string): Promise<TaskStatus>;
+  abstract getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatus>;
 }

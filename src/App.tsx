@@ -5,6 +5,7 @@ import SingleTaskPage from './pages/SingleTaskPage';
 import SettingsPage from './pages/Settings';
 import ApiTestPage from './pages/ApiTestPage';
 import ReferenceImagePage from './pages/ReferenceImagePage';
+import TaskListPage from './pages/TaskListPage';
 import { hasApiKey } from './services/localStorageService';
 
 // 简单的导航菜单
@@ -54,6 +55,16 @@ function NavigationMenu() {
           }}
         >
           视频生成
+        </a>
+        <a
+          href="/tasks"
+          style={{
+            color: location.pathname === '/tasks' ? '#a855f7' : '#9ca3af',
+            textDecoration: 'none',
+            fontWeight: location.pathname === '/tasks' ? '500' : '400'
+          }}
+        >
+          任务列表
         </a>
         <a
           href="/config"
@@ -350,6 +361,14 @@ function AppContent() {
         path="/reference"
         element={
           hasApiKey() ? <ReferenceImagePage /> : <Navigate to="/config" replace />
+        }
+      />
+
+      {/* 任务列表页面 - 需要API Key */}
+      <Route
+        path="/tasks"
+        element={
+          hasApiKey() ? <TaskListPage /> : <Navigate to="/config" replace />
         }
       />
 

@@ -1,5 +1,6 @@
 import { SpinnerIcon, FilmIcon, DownloadIcon } from './Icons';
 import { getApiConfig } from '../services/localStorageService';
+import { downloadVideoFromProxy, extractTaskId } from '../services/videoDownloadService';
 
 interface VideoPlayerProps {
   videoUrl: string | null;
@@ -100,14 +101,28 @@ export default function VideoPlayer({
             loop
           />
           <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-            <a
-              href={proxied}
-              download="seedance-video.mp4"
+            <button
+              onClick={async () => {
+                const taskId = extractTaskId(videoUrl);
+                if (!taskId) {
+                  alert('无法获取视频ID，下载失败');
+                  return;
+                }
+
+                try {
+                  await downloadVideoFromProxy(taskId, {
+                    filename: `seedance_video_${Date.now()}.mp4`,
+                  });
+                } catch (error) {
+                  console.error('下载失败:', error);
+                  alert(`下载失败: ${error instanceof Error ? error.message : '未知错误'}`);
+                }
+              }}
               className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2"
             >
               <DownloadIcon className="w-4 h-4" />
               下载视频
-            </a>
+            </button>
           </div>
         </div>
         {revisedPrompt && (

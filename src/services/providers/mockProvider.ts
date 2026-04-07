@@ -9,6 +9,7 @@ import type {
   VideoGenerationResponse,
   TaskStatus
 } from '../videoProvider';
+import { isAbortError } from './utils';
 
 /**
  * 简化的任务状态（只包含可序列化的字段）
@@ -244,8 +245,13 @@ export class MockProvider implements VideoProvider {
     };
   }
 
-  async getTaskStatus(taskId: string): Promise<TaskStatus> {
+  async getTaskStatus(taskId: string, signal?: AbortSignal): Promise<TaskStatus> {
     MockProvider.initIfNeeded();
+
+    // v7/v8: Mock 也需要检查 signal
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
 
     // 打印查询请求（模仿 aihubmix API）
     console.log('');

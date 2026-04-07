@@ -16,6 +16,13 @@ export interface TaskRecord {
   thumbnailUrl?: string;
   errorMessage?: string;
   isMock?: boolean; // Mock 任务标识
+
+  // v3 新增字段
+  apiKeyHash?: string;
+  provider?: 'aihubmix' | 'volcengine' | 'mock';
+  updatedAt?: string;
+  lastPolledAt?: string;
+  requestPayloadSummary?: string;
 }
 
 export interface ProjectRecord {
@@ -27,7 +34,7 @@ export interface ProjectRecord {
 }
 
 const DB_NAME = 'SeedanceDB';
-const DB_VERSION = 2; // 升级到 v2，支持 isMock 索引
+const DB_VERSION = 3; // 升级到 v3，支持用户关联和轮询字段
 const TASKS_STORE = 'tasks';
 const PROJECTS_STORE = 'projects';
 
@@ -54,6 +61,9 @@ class IndexedDBService {
         const db = (event.target as IDBOpenDBRequest).result;
         const oldVersion = (event as any).oldVersion || 0;
 
+        // v5 修复: 使用累积式条件，确保从任何旧版本升级都能正确执行所有迁移
+        // 参考: Codex v4 审核报告指出区间式条件会导致 0->3 或 1->3 升级时漏执行
+
         // v1: 创建基础结构
         if (oldVersion < 1) {
           // 创建任务存储
@@ -72,17 +82,56 @@ class IndexedDBService {
           }
         }
 
-        // v2: 添加 isMock 索引（仅升级时）
-        if (oldVersion >= 1 && oldVersion < 2) {
+        // v2: 添加 isMock 索引（累积式执行）
+        if (oldVersion < 2) {
           const transaction = (event.target as IDBOpenDBRequest).transaction;
           if (transaction) {
             const taskStore = transaction.objectStore(TASKS_STORE);
             if (!taskStore.indexNames.contains('isMock')) {
               taskStore.createIndex('isMock', 'isMock', { unique: false });
-              console.log('[IndexedDB] 已添加 isMock 索引');
+              console.log('[IndexedDB] 已升级到 v2');
             }
           }
         }
+
+        // v3: 添加用户关联和轮询字段（累积式执行）
+        if (oldVersion < 3) {
+          const transaction = (event.target as IDBOpenDBRequest).transaction;
+          if (transaction) {
+            const taskStore = transaction.objectStore(TASKS_STORE);
+
+            // 单字段索引（带存在性检查）
+            const newIndexes = ['apiKeyHash', 'provider', 'lastPolledAt'];
+            newIndexes.forEach(indexName => {
+              if (!taskStore.indexNames.contains(indexName)) {
+                taskStore.createIndex(indexName, indexName, { unique: false });
+              }
+            });
+
+            // 组合索引（带存在性检查）
+            const newCompoundIndexes = [
+              { name: 'apiKeyHash_status', keys: ['apiKeyHash', 'status'] },
+              { name: 'apiKeyHash_createdAt', keys: ['apiKeyHash', 'createdAt'] },
+            ];
+            newCompoundIndexes.forEach(({ name, keys }) => {
+              if (!taskStore.indexNames.contains(name)) {
+                taskStore.createIndex(name, keys, { unique: false });
+              }
+            });
+
+            console.log('[IndexedDB] 已升级到 v3');
+          }
+        }
+      };
+
+      // 添加版本变更处理
+      db.onversionchange = () => {
+        db.close();
+        console.warn('[IndexedDB] 数据库版本已变更，关闭连接');
+      };
+
+      request.onblocked = () => {
+        console.error('[IndexedDB] 升级被阻塞，请关闭其他标签页');
       };
     });
   }
